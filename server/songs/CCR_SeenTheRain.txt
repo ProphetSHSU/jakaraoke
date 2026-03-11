@@ -1,0 +1,73 @@
+<div id="songTitle"/>Creedence Clearwater Revival - Have you ever seen the rain - Capo 0 - BPM 104
+
+<div id="1" />[[Intro] [4M]
+Am    F/C    C    G    C      
+         
+
+<div id="5" />[Verse] [16M]
+C
+Someone told me long ago
+C                                   G
+There's a calm before the storm, I know
+                     C  
+And it's been coming for some time
+C
+When it's over, so they say
+C                          G
+It'll rain a sunny day, I know
+                   C  
+Shining down like water
+
+
+<div id="21" />[Chorus] [12M]
+F         G
+I wanna know
+         C    C/B      Am    Am/G
+Have you ever seen the rain
+F         G
+I wanna know
+         C    C/B      Am    Am/G
+Have you ever seen the rain
+F        G               C  
+Coming down on a sunny day
+
+
+<div id="33" />[Verse] [16M]
+C
+Yesterday and days before
+C                                G
+Sun is cold and rain is hard, I know
+                    C 
+Been that way for all my time
+C
+'Til forever on it goes
+C                                 G
+Thru the circle fast and slow, I know
+                       C 
+And it can't stop, I wonder
+
+
+<div id="49" />[Chorus] [12M]
+F         G
+I wanna know
+         C    C/B      Am    Am/G
+Have you ever seen the rain
+F         G
+I wanna know
+         C    C/B      Am    Am/G
+Have you ever seen the rain
+F        G                C  
+Coming down on a sunny day
+
+
+<div id="61" />[Chorus]
+F         G
+I wanna know
+         C    C/B      Am    Am/G
+Have you ever seen the rain
+F         G
+I wanna know
+         C    C/B      Am    Am/G
+Have you ever seen the rain
+F        G                C     G    C 
+Coming down on a sunny day 

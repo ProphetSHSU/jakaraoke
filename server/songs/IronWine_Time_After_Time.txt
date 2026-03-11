@@ -1,0 +1,102 @@
+<div id="songTitle"/>Iron & Wine - Time After Time - Capo 1 - BPM 125
+
+<div id="1" />[Intro]iii
+F G Em F   
+F G  
+
+
+<div id="4" />[Verse 1]iiii iiii iiii iii
+F     C     F      C        F     C          
+Lying in my bed I hear the clock tick,
+     F        C            
+and think of you
+ F     C      F   C      F  C       
+Caught up in circles confusion,
+    F       C         
+is nothing new
+F    G    Em   F
+Flashback warm nights;
+  G           Em
+almost left behind
+F   G       Em   F
+Suitcase of memories,
+     G
+Time after  
+
+
+<div id="19" />[Verse 2]iiii iiii iiii ii
+F    C         F      C    
+Sometimes you picture me,
+     F  C        F     C                       
+I'm walking too far ahead
+F      C       F   C     F     C                                     
+You're calling to me, I can't hear,
+  F           C                     
+what you ve said
+     F   G   Em F
+Then you say go slow;
+  G      Em
+I fall behind
+    F  G   Em     F
+The second hand unwinds
+
+
+<div id="33" />[Chorus]iiii iiii
+          G                              Am
+If you're lost you can look and you will find me;
+F    G     C
+time after time
+       G                             Am
+If you fall I will catch you I'll be waiting;
+F    G     C
+time after time
+
+
+<div id="41" />[Instrumental]iiii i
+F G Em F
+F G Em F 
+F G
+
+
+<div id="46" />[Verse 3]iiii iiii iiii ii
+F  C      F       C         F    C       F        C
+After my picture fades and darkness has turned to gray
+ F    C           F   C          F    C      F    C    
+Watching through windows you're wondering if I'm OK
+                         
+F   G   Em F  G            Em   F
+Secrets stolen from deep inside;
+    F    G     Em     F
+the drum beats out of time
+
+
+[<div id="60" />Chorus]iiii iiii iiii iiii
+          G                              Am
+If you're lost you can look and you will find me;
+F    G     C
+time after time
+       G                             Am
+If you fall I will catch you I'll be waiting;
+F    G     C
+time after time
+          G                              Am
+If you're lost you can look and you will find me;
+F    G     C
+time after time
+       G                             Am
+If you fall I will catch you I'll be waiting;
+
+
+<div id="76" />[Outro]
+F    G     C
+Time after time
+F    G     C
+Time after time
+F    G     C
+Time after time
+F    G     C
+Time after time
+F    G     C
+Time after time
+F    G     C
+Time after time

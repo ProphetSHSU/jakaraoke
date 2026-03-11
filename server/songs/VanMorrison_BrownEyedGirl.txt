@@ -1,0 +1,69 @@
+<div id="songTitle"/>Van Morrison - Brown Eyed Girl - Capo 0 - BPM 142
+
+<div id="1" />[Intro] [8M]
+G   C   G   D
+G   C   G   D
+
+
+<div id="9" />[Verse] [24M]
+G                C      G               D
+   Hey where did we go,   days when the rains came 
+G              C       G           D
+   Down in the hollow,   playin' a new game
+G                 C                 G                D
+   Laughin' and a-runnin' hey, hey,   skippin’ and a-jumpin’
+G               C                 G         D                    C
+   In the misty mornin' fog with,   ah, our hearts thumpin' with you
+D                G     Em   C          D           G      D7
+   My brown-eyed girl,        you’re my brown-eyed girl
+
+
+<div id="33" />[Verse] [24M]
+G           C        G             D
+   Whatever happened,  to Tuesday is so slow 
+G                 C               G            D
+   Goin’ down the old mine with a   transistor radio
+G                  C                  G                 D
+   Standin’ in the sunlight laughin’,   hidin’ behind a rainbow's wall
+G                 C       G               D                C
+   Slippin’ and a-slidin’   all along the waterfall with you 
+D                G     Em   C          D           G
+   My brown-eyed girl,        you’re my brown-eyed girl
+
+
+<div id="57" />[Chorus] [13M]
+D7                                 G
+   Do you remember when we used to sing
+             C           G              D
+   Sha la la la la la la la la la la te da (just like that)
+G            C           G              D         G
+   Sha la la la la la la la la la la te da, la te da
+
+
+<div id="70" />[Bass solo] [8M]
+G   C   G   D
+
+
+<div id="78" />[Verse] [24M]
+G               C          G                 D
+   So hard to find my way,   now that I'm all on my own
+G                     C          G     D
+   I saw you just the other day,   my, you have grown
+G                 C                 G               D
+   Cast my memory back there, Lord,   sometimes I'm overcome thinkin’ about
+G                     C            G            D            C
+   Makin’ love in the green grass,   behind the stadium with you
+D                G     Em   C            D           G
+   My brown-eyed girl,        a-you’re my brown-eyed girl
+
+<div id="102" />[Chorus]
+D7                                 G
+   Do you remember when we used to sing
+             C           G              D
+   Sha la la la la la la la la la la te da
+G            C           G              D
+   Sha la la la la la la la la la la te da
+G            C           G              D
+   Sha la la la la la la la la la la te da
+G            C           G              D
+   Sha la la la la la la la la la la te da

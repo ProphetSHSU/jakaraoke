@@ -1,0 +1,70 @@
+<div id="songTitle"/>Matchbox 20 - 3am - Capo 3 - 108bpm
+
+<div id="1" />[Intro] 
+G, Cadd9,  G, Cadd9/G, Cadd9,  G, Cadd9 D
+
+<div id="9" />[Verse]
+D             C                             G           G Cadd9  G  Cadd9     
+She says it's cold outside and she hands me my raincoat
+D            C                          G    Cadd9  G  Cadd9
+She's always worried about things like that
+D              C                                    G        G  Cadd9  G Cadd9
+She says it's all gonna end and it might as well be my fault
+        D                     Cadd9            
+And she only sleeps when it's raining, 
+        D              Cadd9
+and she screams and her voice is straining and she says…
+
+<div id="25" />[Chorus]
+G   D  Cadd9                   G      D Cadd9 
+Baby……………. It's 3 am I must be lonely
+               G   D Cadd9                                    Em    D
+When she says baby,………….well I can't help but be scared of it all sometimes
+         Cadd9                                 G, Cadd9,  G, Cadd9 D
+Says the rain's gonna wash away I believe it.
+
+<div id="37" />[Verse]
+D           C                                              G,    Cadd9   G   Cadd9
+She's got a little bit of something, God it's better than nothing
+D                Cadd9                                         G    Cadd9   G Cadd9 
+And in her color portrait world she believes that she's got it all.
+D                        Cadd9                      G,     Cadd9   G   Cadd9                                 
+She swears the moon don't hang quite as high as it used to
+        D                     Cadd9            
+And she only sleeps when it's raining, 
+         D              Cadd9
+and she screams and her voice is straining and she says…
+
+<div id="53" />[Chorus]
+G   D  Cadd9                  G      D C 
+Baby……………. It's 3am I must be lonely
+               G   D Cadd9                                    Em       D
+When she says baby,………….well I can't help but be scared of it all sometimes
+         Cadd9                                 G C G C D
+Says the rain's gonna wash away I believe it.
+
+<div id="65" />[Verse]
+D                Cadd9                                    G, Cadd9   G   Cadd9 
+She believes that life is made up of all that you're used to.
+D       C                                              G,            Cadd9   G   Cadd9
+And the clock on the wall has been stuck at three for days, and days.
+D                C                                    G,      Cadd9   G   Cadd9
+She thinks that happiness is a mat that sits on her doorway
+     D                    C
+But outside it's stopped raini-i-i-i-i-ng.
+
+<div id="80" />[Chorus]
+G   D  Cadd9                   G      D Cadd9 
+Baby……………. It's 3 am I must be lonely
+               G   D Cadd9                                    Em    D
+When she says baby,………….well I can't help but be scared of it all sometimes
+         Cadd9                                 G C G C D
+Says the rain's gonna wash away I believe it.
+
+<div id="92" />[Chorus/Outro]
+G   D  C                        G    D C 
+Baby……………. It's 3 am I must be lonely
+               G   D C                                        Em      D
+When she says baby,…………well I can't help but be scared of it all sometimes
+         Cadd9                                 G C G C D
+Says the rain's gonna wash away I believe it.

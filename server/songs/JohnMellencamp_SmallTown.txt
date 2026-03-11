@@ -1,0 +1,102 @@
+<div id="songTitle"/>John Mellencamp - Small Town - Capo 4 - BPM 123
+
+<div id="1" />[Intro] iiii iiii
+
+G D C   D x4
+
+
+<div id="9" />[VERSE 1]iiii iiii
+
+G           D          C          D
+ Well I was born in a small town
+G       D       C            D
+ And I live in a small town
+G       D        Em
+ Probly die in a small town
+            Am            D
+ Oh, those small communities
+
+ 
+<div id="17" />[VERSE 2]iiii iiii iiii
+
+G       D              C          D
+ All my friends are so small town
+G            D          C               D
+ My parents live in the same small town
+G   D         Em
+ My job is so small town
+           Am              D
+ Provides little opportunity
+
+ G D C   D x2
+
+ 
+<div id="29" />[VERSE 3]iiii iiii
+
+G         D    C           D
+ Educated in a small town
+G                    D          C           D
+ Taught the fear of jesus in a small town
+G           D      Em
+ Used to daydream in that small town
+  Am                            D
+ Another boring romantic thats me
+
+ <div id="37" />[VERSE 4]iiii iiii
+
+          G       D        C           D
+ But Ive seen it all in a small town
+G             D         C             D
+ Had myself a ball in a small town
+G           D                         Em
+ Married an l.a. doll and brought her to this small town
+           Am                   G
+ Now shes small town just like me
+
+<div id="45" />[BRIDGE]iiii iiii iiii
+
+      C       G              C               G
+ No I cannot forget where it is that I come from
+      C               G          D
+ I cannot forget the people who love me
+             C    G         C             G
+ Yeah, I can be myself here in this small town
+     C             G               D
+ And people let me be just what I want to be
+
+ G D C   D x2
+
+<div id="57" />[Instumental]iiii iiii iiii iiii
+ Am |Am G|C |G
+ Am |Am G|C |G
+ Am |Am G|C |G
+ G   G
+
+ lighty finger picker for 2 bars
+ C
+
+ <div id="73" />[VERSE 5] (lightly strumming)iiii iiii
+
+G            D         C          D
+ Got nothing against a big town
+G                D            C                          D
+ Still hayseed enough to say look whos in the big town
+G       D           Em
+ But my bed is in a small town
+               Am               D
+ Oh, and thats good enough for me
+
+ 
+<div id="81" />[VERSE 6]
+
+G           D         C              D
+ Well I was born in a small town
+G          D            C            D
+ And I can breathe in a small town
+G      D           Em
+ Gonna die in this small town
+           Am                        D
+ And thats probly where theyll bury me
+
+
+  G D C   D x2

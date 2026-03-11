@@ -1,0 +1,109 @@
+<div id="songTitle"/>Whitney Houston - I Wanna Dance with Somebody - Capo 4 - BPM 116
+
+<div id="1" />[Intro] [8M]
+D Em 2x
+ 
+<div id="9" />[Verse 1] [15M]
+D   D                                    Em
+    Clocks strikes upon the hour, and the sun begins to fade,
+ D                                     Em
+still enough time to figure out how to chase my blues away.
+ C9                    D                  G                C9
+I've done alright up 'til now, it's the light of day that shows me how,
+     C9             D                      C9 G
+and when the night falls, loneliness calls.
+ 
+<div id="24" />[Chorus] [16M]
+G
+Oh! I wanna dance with somebody,
+I wanna feel the heat with somebody.
+Em
+Yeah! I wanna dance with somebody,
+C9            C9
+with somebody who loves me.
+G
+Oh! I wanna dance with somebody,
+I wanna feel the heat with somebody.
+Em
+Yeah! I wanna dance with somebody,
+C9         C9             
+with somebody who loves me.
+ 
+<div id="40" />[Verse 2] [15M]
+D                                     Em
+I've been in love and lost my senses, spinning through the town,
+D                                   Em
+soon or later the fever ends, and I wind up feeling down.
+C9                   D
+I need a woman who'll take a chance,
+     G                       C9
+on a love that burns hot enough to last.
+     C9            D                    C9   G
+So when the night falls, my lonely heart calls.
+
+<div id="55" />[Chorus] [16M]
+G
+Oh! I wanna dance with somebody,
+I wanna feel the heat with somebody.
+Em
+Yeah! I wanna dance with somebody,
+C9         C9
+with somebody who loves me.
+G
+Oh! I wanna dance with somebody,
+ 
+I wanna feel the heat
+Em
+Yeah! I wanna dance with somebody,
+C9                  D       Em
+with somebody who loves me.
+ 
+<div id="71" />[Bridge] [15M]
+                     Em        D
+Somebody who , somebody who,    somebody to love me,
+   Em                         D
+somebody who , somebody who,   to hold me in her arms, oh!
+    C9                        D
+I need a woman who'll take a chance,
+      G                  C9
+on a love that burns hot enough to last.
+    C9              D                       C9 G
+So when the night falls, my lonely heart calls.
+
+<div id="86" />[Chorus] [16M]
+G
+Oh! I wanna dance with somebody,
+I wanna feel the heat with somebody.
+Em
+Yeah! I wanna dance with somebody,
+C9
+with somebody who loves me.
+G
+Oh! I wanna dance with somebody,
+I wanna feel the heat with somebody.
+Em
+Yeah! I wanna dance with somebody,
+C9                         G
+with somebody who loves me.
+ 
+<div id="102" />[Interlude] x4
+G
+oh oh oh oh dance
+ 
+[Bridge]
+G
+Don't you wanna dance?
+Say you wanna dance?
+Don't you wanna dance?
+(Dance)
+G
+Don't you wanna dance?
+Say you wanna dance?
+Don't you wanna dance?
+(Dance)
+Em
+Don't you wanna dance?
+Say you wanna dance...(Dance)
+Uh-huh
+C9                     G
+With somebody who loves me

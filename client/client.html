@@ -1,0 +1,28 @@
+//NOT THIS FILE - GO TO THE index.html file in /Users/jake/Sites/index.html
+<!DOCTYPE html>
+<html>
+<head>
+  <title>WebSocket Playground</title>
+  <p id="beatCount">Beats sent so far: 0</p>
+</head>
+<body>
+
+</body>
+<script>
+
+const ws = new WebSocket('ws://localhost:9898/');
+
+var beatCount = -1;
+ws.onopen = function() {
+    console.log('WebSocket Client Connected');
+    ws.send('Hi this is web client.');
+};
+
+ws.onmessage = function(e) {
+  console.log("Received: '" + e.data + "'");
+  beatCount = beatCount + 1;
+  document.getElementById("beatCount").innerHTML = "Beats sent so far: " + beatCount;
+};
+
+</script>
+</html>

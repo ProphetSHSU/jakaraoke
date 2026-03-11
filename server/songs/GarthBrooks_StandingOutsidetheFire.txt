@@ -1,0 +1,103 @@
+<div id="songTitle"/>Garth Brooks - Standing Outside the Fire - Capo 2 - BPM 125
+
+<div id="1" />[Intro] [4M](quick strum with palm mute)                                    
+G   C/G    G    C/G         
+
+
+<div id="5" />[Verse 1] [16M]
+               G                                                
+We call them cool                                                       
+                  C/G                G 
+Those hearts that have no scars to show
+               Em          C
+The ones that never do let go
+              Am             D    D/C   D/B   D/A           
+And risk the tables being turned                                                        
+
+               G                                        
+We call them fools
+              C                G
+Who have to dance within the flame
+                 Em             C
+Who chance the sorrow and the shame
+             Am                  D    D/C   D/B D/A
+That always comes with getting burned
+
+
+<div id="21" />[Bridge] [6M]
+           Em         D/F#                             
+But you've got to be tough
+         C        G      G/F#
+When consumed by desire
+      Em        D/F#            C   C/B  D       G     G
+Cause it's not enough just to stand outside the fire
+
+
+<div id="27" />[Verse 2] [16M]
+                G
+We call them strong
+               C                G
+Those who can face this world alone
+            Em               C                 
+Who seem to get by on their own
+                Am             D    D/C   D/B  D/A
+Those who will never take the fall
+
+               G
+We call them weak
+           C        G
+Who are unable to resist
+                Em                C
+The slightest chance love might exist
+         Am              D   D/C   D/B   D/A
+And for that forsake it all
+
+
+<div id="43" />[Pre-Chorus] [6M]
+           Em             D/F#
+They're so hell bent on giving
+C           G   G/F#
+Walking a wire
+    Em              D/F#
+Convinced it's not living
+           C    C/B D       G    G
+When you stand outside the fire
+
+
+<div id="49" />[Chorus] [8M]
+C           D         G
+Standing outside the fire
+C           D         G
+Standing outside the fire
+Em          D/F#        G  C5* C/B   C
+Life is not tried it is merely survived
+C/B         Am        D         G
+If you're standing outside the fire
+
+
+<div id="57" />[Bridge 2] [10M]
+              C
+There's this love that is burning
+G/B*
+Deep in my soul
+Am                          G
+Constantly yearning to get out of control
+C
+Wanting to fly
+G/B*
+Higher and higher
+Am      G/B*     C        D          
+I can't abide, standing outside...the fire
+
+
+<div id="67" />[Chorus]
+C           D         G
+Standing outside the fire
+C           D         G
+Standing outside the fire
+Em          D/F#        G  C5* C/B   C
+Life is not tried it is merely survived
+C/B         Am        D         G
+If you're standing outside the fire
+
+(Repeat and Fade)...

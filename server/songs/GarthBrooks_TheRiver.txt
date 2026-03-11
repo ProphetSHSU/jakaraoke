@@ -1,0 +1,91 @@
+<div id="songTitle"/>Garth Brooks - The River - Capo 0 - BPM 94
+
+<div id="1" />[Intro]iiii ii
+ 
+G    A G    A G    A G     A D Dsus2 D
+ 
+ 
+<div id="7" />[Verse 1]iiii iiii i
+ 
+(D)                       Dsus2 D         G             D
+You know a dream is like a river, ever changing as it flows.
+         G               D/F#             Em             A
+And a dreamer's just a vessel that must follow where it goes
+            D
+Trying to learn from what's behind him
+            Bm               G
+And never knowing what's in store
+            D
+Makes each day a constant battle
+          A                D
+Just to stay between the shores.
+ 
+ 
+<div id="16" />[Chorus 1]iiii iiii i
+ 
+(D)               Dsus2 D            G         D
+And I will sail my vessel 'til the river runs dry,
+        G            D/F#         Em           A
+Like a bird upon the wind these waters are my sky
+            D                    G
+I'll never reach my destination if I never try
+           D                        A          D Dsus2 D
+So I will sail my vessel 'til the river runs dry.
+ 
+ 
+<div id="25" />[Verse 2]iiii iiii i
+ 
+(D)                     Dsus2 D            G            D
+Too many times we stand aside and let the waters slip away
+              G            D/F#       Em           A
+'Til what we put off 'til tomorrow has now become today
+               D                         Bm            G
+So don't you sit upon the shoreline and say you're satisfied
+  D                              A                 D
+Choose to chance the rapids and dare to dance the tide.
+
+<div id="34" />[Chorus 2]iiii iiii i
+ 
+(D)               Dsus2 D           G          D
+And I will sail my vessel 'til the river runs dry,
+        G            D/F#        Em            A
+Like a bird upon the wind these waters are my sky
+             D                              G
+I'll never reach my destination if I never try
+           D                       A           D Dsus2 D
+So I will sail my vessel 'til the river runs dry.
+
+
+ 
+ 
+<div id="43" />[Bridge]iiii i
+ 
+D   Dsus2 D        Bm                 G
+       And there's bound to be rough waters
+              D                   G
+       And I know I'll take some falls
+                     Em               D/F#
+       But with the good Lord as my captain
+              G                    A        (changing key into E)
+       I can make it through them all…
+
+
+ 
+ 
+[<div id="48" />Final Chorus]
+(no chords played or single strum on each chord during the first 2 lines)
+ 
+           (E)                     (A)        (E)
+And I will sail my vessel 'til the river runs dry,
+       (A)          (E/G#)      (F#m)         (B)
+Like a bird upon the wind these waters are my sky
+             E                  A
+I'll never reach my destination if I never try
+           E                              B        E     A
+So I will sail my vessel 'til the river runs dry.
+             E
+Yes, I will sail my vessel
+           B         A
+'Til the river runs dry...
+                     E
+'Til the river runs dry.

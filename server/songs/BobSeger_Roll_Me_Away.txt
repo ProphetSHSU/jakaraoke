@@ -1,0 +1,115 @@
+<div id="songTitle"/>Bob Seger - Roll Me Away - Capo 0 - BPM 118
+
+<div id="1" />INTRO: [8 M] ** TEMPO = 128 BPM -
+-----
+|C       |Dm7/C   |C       |F/C     |C       |Dm7/C   |C       |F/C     |
+ 
+
+<div id="9" />VERSE #1: [14 M]
+--------
+|C                      |Dm7/C                        |C                   |
+      Took a look down a west-bound… road… Right a-way… I made my choice…
+|F/C     |C                     |Dm7/C                     |
+               Head-ed out to my big two… wheel-… er. I was
+|C                       |F/C     |G                      |
+ tired…  of my own voice…               Took a bead on the
+|C                                  |F                 |C/E    |G      |…      |
+ north-ern plains… and I just rolled… that pow-er on…
+ 
+
+<div id="23" />VERSE #2: [16 M] ** TEMPO = 132 BPM -
+--------
+|C                       |Dm7/C                                   |
+      Twelve hours out of Mack-i-naw… Ci-ty, I stopped in-to a bar…
+|C                 |F/C     |C                     |
+… to have a brew…                 Met a girl and we
+|Dm7/C                         |C                           |F/C      |
+ had a few… drinks… and I told…  her what I'd de-cid-… ed to do…
+|G                       F/G            |C                                     |
+      She looked out the win-dow a long,… long… mo-ment, and then she looked in-
+|F              |C/E     |G                       |…                |…       |
+-to my… eyes…                  She did-n't have to say a thing…             I
+|G                            |
+ knew what she was think-in'…
+
+ 
+<div id="39" />CHORUS #1: [16 M]
+---------
+|C           |F/C                       |C                        |F/C     |
+      Roll,…   roll… me a-way… Won't you roll… me a-way… to-night…
+|C                 |F/C                             |
+  I too am lost…  I feel dou-ble-crossed,…  and I'm… 
+|C                                  |F/C         |G              F    |
+ sick of what's… wrong,… and what's… right…           She nev-er e-ven
+|C                                |F                       |C/E     |
+ said a word… She just walked… out… and got on that bike…
+|G                   |…       |…           |…                      |
+      and we rolled,…                and we rolled…    clean out of
+ 
+
+<div id="55" />INTERLUDE #1: [8 M]
+------------
+|C         |F/C     |C       |F/C     |C       |F/C     |C       |F/C     |
+ sight…
+
+
+ <div id="63" />BRIDGE: [17 M]
+------
+|Dm                    |G                |Dm                |G                |
+    Rolled… a-cross the high…  plains…       deep… in-to the moun-…  tains…
+|Am                 |Em        |F                     |G          |
+    Felt… so good to me,…          fin-… 'lly feel-in' free…
+|Dm                    |G              |Dm                  |G              |
+   Some-where… a-long a high…  road…      the air… be-gan to turn…  cold…
+|Am                             |Em      |F                    |G           |
+   She said she missed her home,…           and I head-ed off a-lone,…
+|G        |
+    oh…
+ 
+
+<div id="80" />INTERLUDE #2: [16 M]
+------------
+|C       |F/C     |C       |F/C     |C       |F/C     |C       |F/C     |
+ 
+|C       |F/C     |C       |F/C     |C       |F/C     |C       |F/C     |
+ 
+
+<div id="88" />VERSE #3: [16 M]
+--------
+|C                     |Dm7/C                         |C                     |
+      Stood a-lone on a moun-tain… top…  star-in' down… at the Great Di-vide…
+|F/C     |C                    |Dm7/C                        |
+…             I could go east,… I could go west…  It was… all…
+|C                    |F/C     |G             F/G        |
+… up to… me to de-cide…           Just then I saw a young…
+|C                               |F               |C/E     |G               |
+… hawk… fly-… in', and my soul be-gan to… rise…                  And pret-ty
+|G        |…       |…                       |
+ soon…               my heart was sing-in'…
+ 
+
+<div id="104" />CHORUS #2: [17 M]
+---------
+|C           |F/C                           |C                        |F/C     |
+      Roll,…   roll… me a-way. I want you to roll… me a-way… to-night…
+|C                        |F/C                         |
+  Got-ta keep roll-…  in', got-ta keep rid-in',…  keep… 
+|C                               |F/C         |G                 F    |
+ search-in' till… I… find what's… right…          And as the sun-… set
+|C                              |F                       |C/E     |
+ fad-ed, I… spoke to the… faint-… est first star light…
+|G                        |G       |…              |…       |…                |
+  and I said next time,…              next… time…              we'll… get it…
+ 
+
+<div id="121" />CODA: [26 M] 'Refrain' (Lyrics in brackets '[ ]' are whispered.)
+----         Orig. fades out, so just hold last 'C' chord to end.
+ 
+|C          |F/C        |C     |F/C   |C     |F/C       |C     |F/C         |
+ right,…       [right,…]                        [right…]           Roll…  me…
+ 
+|C        |F/C   |C     |F/C         |C        |F/C   |C     |F/C         |
+… a-way…                    Roll…  me… a-way…                     to-night…
+ 
+|C     |F/C   |C     |F/C         |C        |F/C   |C     |F/C   |C     |…     |
+…                        Roll…  me… a-way…

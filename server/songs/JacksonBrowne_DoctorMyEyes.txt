@@ -1,0 +1,55 @@
+<div id="songTitle"/>Jackson Browne - Doctor My Eyes - Capo 1 - BPM 148
+
+<div id="1" />[Intro] [8M]
+E  D/E*  A/E  E
+
+
+<div id="9" />[Verse 1] [16M]
+E
+Doctor, my eyes have seen the years
+             G#m                      C#m
+And the slow parade of fears without crying
+       A         E
+Now I want to understand
+
+I have done all that I could, to see the evil and the good
+without hiding.  You must help me if you can
+
+
+<div id="25" />[Chorus] [16M]
+C#m               E
+Doctor, my eyes, tell me what is wrong
+        C#m                 B             A  E  D/E  A/E  E
+Was I unwise to leave them open for so long
+
+[Instrumental break]
+
+
+<div id="41" />[Verse 2] [16M]
+E
+'Cause I have wandered through this world
+             G#m                      C#m
+And as each moment has unfurled,  I've been waiting
+       A         E
+to awaken from these dreams
+
+People go just where they will, I never noticed them until
+
+I got this feeling, that it's later than it seems
+
+
+<div id="57" />[Chorus] [16M]
+C#m                E
+Doctor, my eyes, tell me what you see
+C#m                              B              D/E**  A  (E D/E A/E E repeat)
+I hear their cries, just say if it's too late for me
+
+
+[Instrumental break]
+
+
+<div id="73" />[Chorus]
+C#m              E
+Doctor, my eyes cannot see the sky
+C#m                           B                  A  E  D/E  A/E  E
+Is this the prize for having learned how not to cry

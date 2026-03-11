@@ -1,0 +1,103 @@
+<div id="songTitle">Fake Song 4</div>
+
+<div id="1">[verse 1]</div>
+G                              C                   D
+line line line line line line line line line line line line line line line line 
+G                              C                   D
+line line line line line line line line line line line 
+Em                             C
+line line line line line line line line line line line line line 
+G                              D
+line line line line line line line line
+
+<div id="8">[verse 2]</div>
+G                              C                   D
+line line line line line line line line line line 
+G                              C                   D
+line line line line line line line line line line line line 
+Em                             C
+line line line line line line line line line line 
+G                              D
+line line line line line line line line line line line line line line 
+
+<div id="17">[Chorus 1]</div>
+D               Em                  D7              G
+line line line line line line line line line line line line 
+D               Em                  D7              G
+line line line line line line line line line line line line 
+D               Em                  D7              G
+line line line line line line 
+D               Em                  D7              G
+line line line line line line 
+G                         D
+line line line line line line line line line line 
+G                         D
+line line line line line line line line line line 
+
+<div id="27">[verse 3]</div>
+G                              C                   D
+line line line line line line line line line line 
+G                              C                   D
+line line line line line line line line line line line line 
+Em                             C
+line line line line line line line line line line 
+G                              D
+line line line line line line line line line line line line line line 
+
+<div id="35">[Chorus 2]</div>
+D               Em                  D7              G
+line line line line line line line line line line line line 
+D               Em                  D7              G
+line line line line line line line line line line line line 
+D               Em                  D7              G
+line line line line line line 
+D               Em                  D7              G
+line line line line line line 
+G                         D
+line line line line line line line line line line 
+G                         D
+line line line line line line line line line line 
+
+<div id="47">[bridge]</div>
+Am         C
+line line line line
+Am         C
+line line line line
+Am         C
+line line line line
+Am         C
+line line line line
+
+<div id="55">[instrumental]</div>
+G A B C D E
+
+<div id="61">[Chorus 3]</div>
+D               Em                  D7              G
+line line line line line line line line line line line line 
+D               Em                  D7              G
+line line line line line line line line line line line line 
+D               Em                  D7              G
+line line line line line line 
+D               Em                  D7              G
+line line line line line line 
+G                         D
+line line line line line line line line line line 
+G                         D
+line line line line line line line line line line 
+
+<div id="73">[instrumental]</div>
+G A B C D E
+
+<div id="79">[Chorus 4]</div>
+D               Em                  D7              G
+line line line line line line line line line line line line 
+D               Em                  D7              G
+line line line line line line line line line line line line 
+D               Em                  D7              G
+line line line line line line 
+D               Em                  D7              G
+line line line line line line 
+G                         D
+line line line line line line line line line line 
+G                         D
+line line line line line line line line line line 

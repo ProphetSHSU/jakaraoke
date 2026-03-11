@@ -1,0 +1,89 @@
+<div id="songTitle"/>Shawn James - Like A Stone - Capo 0 - BPM 96
+
+<div id="1" />[Intro] [8M]
+Em D B7 C
+Em D B7 C
+
+ 
+
+<div id="9" />[Verse 1] [16M]
+Em          D              B7           C
+On a cobweb afternoon in a room full of emptiness
+     Em         D            B7           C
+By a freeway, I confess I was lost in the page
+Em                D       B7                C
+Of a book full of death, reading how we'll die alone
+    Em             D                 B7                  C
+And if we're good, we'll lay to rest anywhere we want to go
+
+ 
+ 
+<div id="25" />[Chorus] [16M]
+Em      G       D       Em
+In your house I long to be
+Em      G    D       Em
+Room by room patiently
+     C        Em        D      Em
+I'll wait for you there like a stone
+  C             Em      B7
+I'll wait for you there alone
+
+ 
+ 
+<div id="41" />[Instrumental] [4M]
+Em D B7 C
+
+ 
+ 
+<div id="45" />[Verse 2] [16M]
+Em                 D              B7               C
+And on my deathbed I will pray to the gods and the angels
+      Em        D          B7              C
+To the pagan of anyone who will take me to heaven
+Em         D         B7             C
+To a place I recall, I was there so long ago
+Em                   D                  B7                   C
+The sky was bruised, the wine was bled, and there you led me on
+
+
+<div id="61" />[Chorus] [16M]
+Em      G       D       Em
+In your house I long to be
+Em      G    D       Em
+Room by room patiently
+     C            Em    D      Em
+I'll wait for you there like a stone
+     C            Em    B7     B7
+I'll wait for you there alone, alone
+
+ 
+ 
+<div id="77" />[Instrumental] [8M]
+Em G D Em
+C Em B7 B7
+
+ 
+ 
+<div id="85" />[Bridge] [16M]
+C        G      B7              C
+And on I read until the day was gone
+      Cm     A7         B7       Em
+And I sat in regret for all the things I've done
+C               G              B7            C
+For all that I've blessed, and all that I've wronged
+Cm              A7              B7
+In dreams until my death I will wander on
+ 
+ 
+<div id="101" />[Chorus] [16M]
+Em      G       D       Em
+In your house I long to be
+Em      G    D       Em
+Room by room patiently
+     C            Em    D      Em
+I'll wait for you there like a stone
+     C           Em     B7     B7
+I'll wait for you there alone, alone
+ 
+[Outro]
+C
