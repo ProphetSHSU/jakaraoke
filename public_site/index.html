@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+
+
+<head>
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="./favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="./favicon-16x16.png">
+  <link rel="icon" href="./favicon.ico">
+  <link rel="manifest" href="./site.webmanifest">
+
+  <link rel="stylesheet" href="styles.css">
+
+
+  <title>Jakeraoke</title>
+</head>
+
+<div id="header" class="navbar-fixed-top">
+    <p id="beatCount"></p>
+  </div>
+<body>
+
+  
+
+  
+
+  <div class="content" id="songDiv">
+      <PRE><p id="songBody"></p></PRE>
+  </div>
+
+
+
+
+</body>
+
+
+
+
+
+
+
+
+
+<script>
+
+const ws = new WebSocket('ws://192.168.1.34:9898/');
+//const ws = new WebSocket('ws://locahost:9898/');
+
+var beatCount = -1;
+var measure = -2;
+
+function initializePage(){
+  document.getElementById("beatCount").innerHTML = "Welcome to Jakeraoke - A song chart will appear below as soon as one is selected and sent.";
+  beatCount = 1;
+  measure = -1;
+
+
+/*//REMOVE THIS
+var songText = "aaaaaaa<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <div id='songTitle'/><br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>a<br>b<br> <br>"
+
+handleSong(songText);
+//REMOVE THIS*/
+
+}
+
+initializePage();
+
+
+function handleBeat(note, velocity){
+  //console.log(note);
+  //console.log(velocity);
+
+  //if note == 37 its the top of a measure
+  //else (note == 36 atm) its a regular beat
+
+  //if velocity == 1 AND note == 37 it's the beginning of the song
+  switch(note) {
+    case 37:
+      if(velocity==1) {
+        initializePage();
+      } else {
+        measure = measure + 1;
+        beatCount = 1
+      }
+      tryToScrollToMeasureDiv(measure);
+      break;
+    case 36:
+      beatCount = beatCount + 1;
+      break;
+    default:
+      break;
+  }
+
+  //beatCount = beatCount + 1;
+  document.getElementById("beatCount").innerHTML = "Measure: " + measure + " Beat: " + beatCount;
+
+}
+
+var offset = 110;
+function tryToScrollToMeasureDiv(measureNum) {
+  var pointer = document.getElementById(measureNum)
+  if(pointer){
+    //pointer.scrollIntoView({behavior: "smooth", block: "end", inline: "nearest"});
+
+     // sticky nav height
+    //var el = document.querySelector('.some-element'); // element you are scrolling to
+    window.scroll({ top: (pointer.offsetTop - offset), left: 0, behavior: 'smooth' });
+  }
+}
+
+function handleSong(song){
+  //console.log(song);
+  document.getElementById("songBody").innerHTML = song;
+  //document.getElementById("songTitle").scrollIntoView({behavior: "smooth", block: "start"});
+  //window.scrollBy(0, -5);
+  var pointer = document.getElementById("songTitle");
+  window.scroll({ top: (pointer.offsetTop - offset), left: 0, behavior: 'smooth' });
+}
+
+ws.onopen = function() {
+    console.log('WebSocket Client Connected');
+    ws.send('Hi this is web client.');
+};
+
+ws.onmessage = function(e) {
+  //console.log("Received: '" + e.data + "'");
+
+  try {
+    var midiPayload = JSON.parse(e.data);
+    
+    //console.log('command: ' + midiPayload.command)
+    //console.log(midiPayload.note)
+    //console.log(midiPayload.velocity)
+
+    switch (midiPayload.command) {
+        case 144: // ableton beat (noteOn)
+            handleBeat(midiPayload.note, midiPayload.velocity);
+            break;
+        case 0: // songEmit
+            handleSong(midiPayload.song);
+            break;
+        // we could easily expand this switch statement to cover other types of commands such as controllers or sysex
+    }
+
+  }catch(error) {
+    console.log(error)
+  }
+
+  
+
+  
+};
+
+</script>
+</html>
