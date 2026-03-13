@@ -31,16 +31,26 @@ else
 fi
 
 # Wait a moment for HTTP server to be ready
-sleep 1
+sleep 2
 
-# Open the clients via HTTP server (not local files)
+# Detect if using HTTPS or HTTP
+CERT_FILE="$SCRIPT_DIR/server/ssl/cert.pem"
+if [ -f "$CERT_FILE" ]; then
+    PROTOCOL="https"
+else
+    PROTOCOL="http"
+fi
+
+# Open the clients via HTTP/HTTPS server (not local files)
 echo "🎤 Opening display client..."
-open "http://localhost:9898/"
+open "$PROTOCOL://localhost:9898/"
 
 echo "🎛️  Opening test harness..."
-open "http://localhost:9898/test_harness.html"
+open "$PROTOCOL://localhost:9898/test_harness.html"
 
 echo ""
-echo "🌐 For network access, run: ./show_network_info.sh"
-echo ""
 echo "Ready! To stop: ./stop.sh"
+echo ""
+
+# Show network info automatically
+"$SCRIPT_DIR/show_network_info.sh"
