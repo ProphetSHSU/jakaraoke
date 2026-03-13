@@ -380,18 +380,9 @@ wsServer.on('request', function(request) {
           var idx = parsed.index;
           if (idx >= 0 && idx < setList.length) {
             var item = setList[idx];
-            // If clicking on a divider, skip to next song
-            if (typeof item === 'object') {
-              console.log('Clicked on divider at index ' + idx + ', advancing to next song');
-              songPointer = idx;
-              if (advanceToNextSong()) {
-                sendSong(1); // load the song we advanced to
-              }
-            } else {
-              // Normal song selection
-              songPointer = idx - 1; // sendSong increments, so set one before
-              sendSong(1); // 1 = next (will increment to idx)
-            }
+            // Set pointer and send (works for both songs and dividers)
+            songPointer = idx - 1; // sendSong increments, so set one before
+            sendSong(1); // 1 = next (will increment to idx)
           }
           return;
         }
