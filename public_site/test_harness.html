@@ -636,7 +636,15 @@ function onSongSelect() {
   var idx = parseInt(document.getElementById('songSelect').value);
   if (isNaN(idx) || !ws || ws.readyState !== WebSocket.OPEN) return;
   ws.send(JSON.stringify({ type: 'selectSong', index: idx }));
-  log('Jumping to song: ' + serverState.setList[idx], 'cmd');
+
+  // Log appropriate message for songs vs set breaks
+  var item = serverState.setList[idx];
+  if (typeof item === 'object' && item.type === 'divider') {
+    log('Jumping to Set Break (Set ' + item.setNumber + ')', 'cmd');
+  } else {
+    log('Jumping to song: ' + item, 'cmd');
+  }
+
   stopTransport();
 }
 
@@ -649,12 +657,12 @@ function updateSongDropdown() {
 
     // Check if item is a divider object
     if (typeof item === 'object' && item.type === 'divider') {
-      opt.value = '';
-      opt.disabled = true;
-      opt.textContent = '═══ SET BREAK ═══';
+      opt.value = i;
+      opt.textContent = '═══ SET BREAK ═══ (Set ' + item.setNumber + ')';
       opt.style.fontWeight = 'bold';
       opt.style.textAlign = 'center';
-      opt.style.backgroundColor = '#f0f0f0';
+      opt.style.backgroundColor = '#e0e0e0';
+      if (i === serverState.songPointer) opt.selected = true;
     } else {
       // Regular song
       opt.value = i;
