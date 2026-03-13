@@ -386,6 +386,12 @@ function connectWebSocket() {
         return;
       }
 
+      // Set break payload
+      if (msg.command === 0 && msg.setBreak === true) {
+        renderSetBreak(msg.setNumber);
+        return;
+      }
+
       // Beat messages
       if (msg.command === 144) {
         flashBeat(msg.note);
@@ -533,6 +539,41 @@ function renderSong(song) {
   requestAnimationFrame(function() {
     buildAnchors(song);
   });
+}
+
+
+// --- Set Break Renderer ---
+function renderSetBreak(setNumber) {
+  // --- Header ---
+  var header = document.getElementById('header');
+  header.style.display = 'flex';
+
+  document.getElementById('hTitle').textContent = 'Set Break';
+  document.getElementById('hArtist').textContent = 'Intermission between sets';
+
+  // Color stripe - use a neutral color
+  var stripe = document.getElementById('colorStripe');
+  stripe.style.background = '#555';
+  header.style.borderBottomColor = '#555';
+
+  // Clear meta tags
+  document.getElementById('hMeta').innerHTML = '';
+
+  updatePosition();
+
+  // --- Content ---
+  var content = document.getElementById('songContent');
+  content.innerHTML =
+    '<div style="display:flex; align-items:center; justify-content:center; min-height:60vh; flex-direction:column; gap:20px;">' +
+    '<div style="font-size:48px; font-weight:700; color:#4ecca3;">═══ SET BREAK ═══</div>' +
+    '<div style="font-size:24px; color:#777799;">Set ' + setNumber + '</div>' +
+    '<div style="font-size:18px; color:#555; margin-top:40px;">Navigate to the next song to continue</div>' +
+    '</div>';
+
+  // Stop scrolling
+  stopScrollLoop();
+  showTargetLine(false);
+  window.scrollTo(0, 0);
 }
 
 

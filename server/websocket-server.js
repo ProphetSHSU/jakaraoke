@@ -219,11 +219,12 @@ function loadSetlist(name) {
     var content = fs.readFileSync(setlistPath).toString('utf-8');
     var lines = content.split('\n').map(function(l) { return l.trim(); }).filter(function(l) { return l.length > 0; });
 
-    // Each line is either a song name or a set divider (---)
+    // Each line is either a song name or a set divider (--- or --- Set N ---)
     var setNumber = 1;
     setList = [];
     lines.forEach(function(line) {
-        if (line === '---') {
+        // Match divider lines: --- or --- Set N ---
+        if (line === '---' || /^---\s+Set\s+\d+\s+---$/.test(line)) {
             // Set divider marker
             setList.push({ type: 'divider', setNumber: setNumber });
             setNumber++;
@@ -245,28 +246,20 @@ function getSongPath(filename) {
     return path.join(activeLibrary._resolvedPath, filename);
 }
 
-// Helper: advance songPointer to next valid song (skipping dividers)
+// Helper: advance songPointer to next item (song or divider)
 function advanceToNextSong() {
-    while (songPointer < setList.length - 1) {
+    if (songPointer < setList.length - 1) {
         songPointer++;
-        var item = setList[songPointer];
-        if (typeof item === 'string') {
-            return true; // found a song
-        }
-        // else it's a divider, keep advancing
+        return true;
     }
     return false; // reached end of setlist
 }
 
-// Helper: go back to previous valid song (skipping dividers)
+// Helper: go back to previous item (song or divider)
 function retreatToPrevSong() {
-    while (songPointer > 0) {
+    if (songPointer > 0) {
         songPointer--;
-        var item = setList[songPointer];
-        if (typeof item === 'string') {
-            return true; // found a song
-        }
-        // else it's a divider, keep going back
+        return true;
     }
     return false; // reached beginning of setlist
 }
@@ -527,7 +520,7 @@ function getMIDIMessage(message) {
 function sendSong(note) {
     console.log('entering sendSong - note: ' + note)
 
-    //if note is 2 descend, else ascend (skip over dividers)
+    //if note is 2 descend, else ascend
     var success = false;
     if(note == 2) {
         success = retreatToPrevSong();
@@ -536,22 +529,45 @@ function sendSong(note) {
     }
 
     if (!success) {
-        console.log('No more songs in that direction');
+        console.log('No more items in that direction');
         broadcastState();
         return;
     }
 
-    var songSelected = setList[songPointer];
+    var currentItem = setList[songPointer];
     
-    // Double-check it's a song, not a divider (shouldn't happen with helpers)
-    if (typeof songSelected !== 'string') {
-        console.log('ERROR: songPointer landed on a divider!');
+    // Check if we landed on a divider (set break)
+    if (typeof currentItem === 'object' && currentItem.type === 'divider') {
+        console.log('At set break (divider) - Set ' + currentItem.setNumber);
+        
+        // Reset transport at set breaks
+        if (transport.state !== 'stopped') {
+            transport.state = 'stopped';
+            transport.elapsedAtPause = 0;
+            transport.playStartedAt = null;
+        }
+
+        // Send set break message to clients
+        var payload = {
+            "command": 0,
+            "setBreak": true,
+            "setNumber": currentItem.setNumber
+        };
+
+        for (var i = 0; i < remoteConnection.length; i++) {
+            remoteConnection[i].sendUTF(JSON.stringify(payload));
+        }
+
+        // Also broadcast updated state and transport reset
+        broadcastState();
+        broadcastTransport();
         return;
     }
 
-    var songPath = getSongPath(songSelected);
+    // It's a song - load and send it
+    var songPath = getSongPath(currentItem);
 
-    console.log('song = ' + songSelected + ' (path: ' + songPath + ')')
+    console.log('song = ' + currentItem + ' (path: ' + songPath + ')')
 
     try{
         var songText = fs.readFileSync(songPath).toString('utf-8');

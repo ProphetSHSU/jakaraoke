@@ -387,6 +387,9 @@ function connectWebSocket() {
       var msg = JSON.parse(e.data);
       if (msg.type === 'state') {
         handleStateUpdate(msg);
+      } else if (msg.command === 0 && msg.setBreak === true) {
+        // Handle set break message
+        log('Set Break (Set ' + msg.setNumber + ') - pause between sets', 'state');
       }
     } catch(err) {
       // Non-JSON message, ignore
@@ -429,7 +432,18 @@ function updateSongDisplay() {
   var sl = serverState.setList;
   document.getElementById('songIndex').textContent = sp >= 0 ? (sp + 1) : '-';
   document.getElementById('songTotal').textContent = sl.length;
-  document.getElementById('currentSong').textContent = sp >= 0 && sp < sl.length ? prettySongName(sl[sp]) : 'No song selected';
+
+  // Check if current item is a set break (divider)
+  if (sp >= 0 && sp < sl.length) {
+    var currentItem = sl[sp];
+    if (typeof currentItem === 'object' && currentItem.type === 'divider') {
+      document.getElementById('currentSong').textContent = '═══ SET BREAK ═══ (Set ' + currentItem.setNumber + ')';
+    } else {
+      document.getElementById('currentSong').textContent = prettySongName(currentItem);
+    }
+  } else {
+    document.getElementById('currentSong').textContent = 'No song selected';
+  }
 }
 
 // --- Ableton Transport ---
