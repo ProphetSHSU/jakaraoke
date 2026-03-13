@@ -1,0 +1,19 @@
+{
+  "port": 9898,
+  "libraries": [
+    {
+      "name": "WingPunch",
+      "path": "/Users/jawgner/source/Song_Repo/WingPunchDB"
+    },
+    {
+      "name": "SoloSet",
+      "path": "/Users/jawgner/source/Song_Repo/SoloSetDB"
+    },
+    {
+      "name": "Jakeraoke (PoC)",
+      "path": "./songs"
+    }
+  ],
+  "activeLibrary": "WingPunch",
+  "activeSetlist": null
+}

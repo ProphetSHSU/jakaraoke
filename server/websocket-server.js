@@ -4,16 +4,309 @@
 //https://github.com/jazz-soft/JZZ - jzz is a node.js midi tool
 var navigator = require('jzz');
 
+var fs = require("fs");
+var path = require("path");
+var chordpro = require("./chordpro-parser");
 
-//websocket code
+
+// ============================================================
+// Configuration & Library Management
+// ============================================================
+
+var config = JSON.parse(fs.readFileSync(path.join(__dirname, "config.json")).toString('utf-8'));
+
+var libraries = config.libraries || [];
+var activeLibrary = null;
+var availableSongs = [];     // all .txt song files in the active library
+var availableSetlists = [];  // all setlist files found in Setlists/ subfolder
+var setList = [];            // the active setlist (ordered array of filenames)
+var setListName = null;      // name of the active setlist (null = "All Songs")
+var songPointer = -1;
+var songDurations = {};      // filename → durationSeconds (parsed from metadata)
+
+// ============================================================
+// Transport State Machine
+// ============================================================
+// States: 'stopped', 'playing', 'paused'
+// - stopped + play → playing (from top, elapsedAtPause = 0)
+// - playing + pause → paused (freeze, record elapsed)
+// - playing + stop → stopped (reset to top)
+// - paused + play → playing (resume from elapsedAtPause)
+// - paused + stop → stopped (reset to top)
+
+var transport = {
+    state: 'stopped',       // 'stopped' | 'playing' | 'paused'
+    playStartedAt: null,    // Date.now() when play was last started/resumed
+    elapsedAtPause: 0,      // seconds elapsed when paused (for resume)
+    tempo: 120,             // BPM (updated from song metadata on song load)
+    bpb: 4                  // beats per bar
+};
+
+function transportPlay() {
+    if (transport.state === 'playing') return;
+
+    if (transport.state === 'paused') {
+        // Resume from paused position
+        transport.playStartedAt = Date.now() - (transport.elapsedAtPause * 1000);
+    } else {
+        // Start fresh
+        transport.elapsedAtPause = 0;
+        transport.playStartedAt = Date.now();
+    }
+    transport.state = 'playing';
+    console.log('Transport: PLAY (elapsed offset: ' + transport.elapsedAtPause.toFixed(1) + 's)');
+    broadcastTransport();
+}
+
+function transportPause() {
+    if (transport.state !== 'playing') return;
+
+    // Record how far we got
+    transport.elapsedAtPause = (Date.now() - transport.playStartedAt) / 1000;
+    transport.state = 'paused';
+    console.log('Transport: PAUSED at ' + transport.elapsedAtPause.toFixed(1) + 's');
+    broadcastTransport();
+}
+
+function transportStop() {
+    if (transport.state === 'stopped') return;
+
+    transport.state = 'stopped';
+    transport.elapsedAtPause = 0;
+    transport.playStartedAt = null;
+    console.log('Transport: STOPPED');
+    broadcastTransport();
+}
+
+function getTransportPayload() {
+    var elapsed = 0;
+    if (transport.state === 'playing' && transport.playStartedAt) {
+        elapsed = (Date.now() - transport.playStartedAt) / 1000;
+    } else if (transport.state === 'paused') {
+        elapsed = transport.elapsedAtPause;
+    }
+
+    return {
+        type: 'transport',
+        state: transport.state,
+        elapsed: elapsed,
+        tempo: transport.tempo,
+        bpb: transport.bpb
+    };
+}
+
+function broadcastTransport() {
+    var payload = JSON.stringify(getTransportPayload());
+    for (var i = 0; i < remoteConnection.length; i++) {
+        remoteConnection[i].sendUTF(payload);
+    }
+}
+
+function loadLibrary(libraryName) {
+    var lib = libraries.find(function(l) { return l.name === libraryName; });
+    if (!lib) {
+        console.log('Library not found: ' + libraryName);
+        return false;
+    }
+
+    var libPath = lib.path;
+    // Resolve relative paths from the server directory
+    if (!path.isAbsolute(libPath)) {
+        libPath = path.join(__dirname, libPath);
+    }
+
+    if (!fs.existsSync(libPath)) {
+        console.log('Library path does not exist: ' + libPath);
+        return false;
+    }
+
+    activeLibrary = lib;
+    activeLibrary._resolvedPath = libPath;
+
+    // Scan for song files (.txt files in the library root, excluding Setlists dir)
+    var files = fs.readdirSync(libPath);
+    availableSongs = files.filter(function(f) {
+        if (!f.endsWith('.txt')) return false;
+        var stat = fs.statSync(path.join(libPath, f));
+        return stat.isFile();
+    }).sort();
+
+    console.log('Loaded library "' + lib.name + '" with ' + availableSongs.length + ' songs');
+
+    // Parse duration metadata from each song
+    songDurations = {};
+    var totalDuration = 0;
+    availableSongs.forEach(function(f) {
+        try {
+            var text = fs.readFileSync(path.join(libPath, f), 'utf-8');
+            var parsed = chordpro.parse(text);
+            var dur = parsed.metadata.durationSeconds || 0;
+            songDurations[f] = dur;
+            totalDuration += dur;
+        } catch(e) {
+            songDurations[f] = 0;
+        }
+    });
+    var totalMin = Math.floor(totalDuration / 60);
+    var totalSec = totalDuration % 60;
+    console.log('Total library duration: ' + totalMin + ':' + (totalSec < 10 ? '0' : '') + totalSec);
+
+    // Scan for setlists
+    var setlistDir = path.join(libPath, 'Setlists');
+    availableSetlists = [];
+    if (fs.existsSync(setlistDir)) {
+        var setlistFiles = fs.readdirSync(setlistDir);
+        availableSetlists = setlistFiles.filter(function(f) {
+            return f.endsWith('.txt');
+        }).map(function(f) {
+            return f.replace('.txt', '');
+        }).sort();
+        console.log('Found ' + availableSetlists.length + ' setlists: ' + availableSetlists.join(', '));
+    }
+
+    // Default to all songs if no setlist is active
+    loadSetlist(null);
+
+    return true;
+}
+
+function loadSetlist(name) {
+    songPointer = -1;
+
+    if (!name) {
+        // "All Songs" mode — use every song in the library alphabetically
+        setListName = null;
+        setList = availableSongs.slice();
+        console.log('Setlist: All Songs (' + setList.length + ' songs)');
+        return true;
+    }
+
+    var setlistPath = path.join(activeLibrary._resolvedPath, 'Setlists', name + '.txt');
+    if (!fs.existsSync(setlistPath)) {
+        console.log('Setlist file not found: ' + setlistPath);
+        return false;
+    }
+
+    var content = fs.readFileSync(setlistPath).toString('utf-8');
+    var lines = content.split('\n').map(function(l) { return l.trim(); }).filter(function(l) { return l.length > 0; });
+
+    // Each line is either a song name or a set divider (---)
+    var setNumber = 1;
+    setList = [];
+    lines.forEach(function(line) {
+        if (line === '---') {
+            // Set divider marker
+            setList.push({ type: 'divider', setNumber: setNumber });
+            setNumber++;
+        } else {
+            // Song filename (add .txt extension)
+            setList.push(line + '.txt');
+        }
+    });
+
+    setListName = name;
+    var songCount = setList.filter(function(item) { return typeof item === 'string'; }).length;
+    var dividerCount = setList.filter(function(item) { return typeof item === 'object'; }).length;
+    console.log('Loaded setlist "' + name + '" with ' + songCount + ' songs and ' + dividerCount + ' set dividers');
+    return true;
+}
+
+function getSongPath(filename) {
+    if (!activeLibrary) return null;
+    return path.join(activeLibrary._resolvedPath, filename);
+}
+
+// Helper: advance songPointer to next valid song (skipping dividers)
+function advanceToNextSong() {
+    while (songPointer < setList.length - 1) {
+        songPointer++;
+        var item = setList[songPointer];
+        if (typeof item === 'string') {
+            return true; // found a song
+        }
+        // else it's a divider, keep advancing
+    }
+    return false; // reached end of setlist
+}
+
+// Helper: go back to previous valid song (skipping dividers)
+function retreatToPrevSong() {
+    while (songPointer > 0) {
+        songPointer--;
+        var item = setList[songPointer];
+        if (typeof item === 'string') {
+            return true; // found a song
+        }
+        // else it's a divider, keep going back
+    }
+    return false; // reached beginning of setlist
+}
+
+// Build a state snapshot to send to clients (e.g. test harness)
+function getStatePayload() {
+    // Build durations array in setList order (dividers have duration 0)
+    var durations = setList.map(function(item) {
+        if (typeof item === 'string') {
+            return songDurations[item] || 0;
+        } else {
+            return 0; // dividers have no duration
+        }
+    });
+    var totalSeconds = durations.reduce(function(sum, d) { return sum + d; }, 0);
+
+    // Map setList to client-friendly format (strip .txt from songs, keep dividers)
+    var clientSetList = setList.map(function(item) {
+        if (typeof item === 'string') {
+            return item.replace('.txt', '');
+        } else {
+            // Return divider object as-is
+            return item;
+        }
+    });
+
+    return {
+        type: 'state',
+        libraries: libraries.map(function(l) { return l.name; }),
+        activeLibrary: activeLibrary ? activeLibrary.name : null,
+        availableSetlists: availableSetlists,
+        activeSetlist: setListName,
+        setList: clientSetList,
+        songPointer: songPointer,
+        songDurations: durations,
+        totalSetSeconds: totalSeconds
+    };
+}
+
+function broadcastState() {
+    var payload = JSON.stringify(getStatePayload());
+    for (var i = 0; i < remoteConnection.length; i++) {
+        remoteConnection[i].sendUTF(payload);
+    }
+}
+
+// Load the configured library on startup
+var startupLibrary = config.activeLibrary || (libraries.length > 0 ? libraries[0].name : null);
+if (startupLibrary) {
+    loadLibrary(startupLibrary);
+    if (config.activeSetlist) {
+        loadSetlist(config.activeSetlist);
+    }
+}
+
+
+// ============================================================
+// WebSocket Server
+// ============================================================
+
 const http = require('http');
 const WebSocketServer = require('websocket').server;
 
-const server = http.createServer();
-server.listen(9898);
+const httpServer = http.createServer();
+httpServer.listen(config.port || 9898);
+console.log('WebSocket server listening on port ' + (config.port || 9898));
 
 const wsServer = new WebSocketServer({
-    httpServer: server
+    httpServer: httpServer
 });
 
 var remoteConnection = [];
@@ -21,18 +314,92 @@ wsServer.on('request', function(request) {
     const connection = request.accept(null, request.origin);
     remoteConnection.push(connection);
 
+    // Send current state and transport to the newly connected client
+    connection.sendUTF(JSON.stringify(getStatePayload()));
+    connection.sendUTF(JSON.stringify(getTransportPayload()));
+
     connection.on('message', function(message) {
       console.log('Received Message:', message.utf8Data);
+
+      // Handle JSON commands from clients (test harness, etc.)
+      try {
+        var parsed = JSON.parse(message.utf8Data);
+
+        // Simulated MIDI from test harness
+        if (parsed.type === 'simulate') {
+          console.log('Simulated MIDI - Command: ' + parsed.command + ' Note: ' + parsed.note + ' Velocity: ' + parsed.velocity);
+          var simulated = { data: [parsed.command, parsed.note, parsed.velocity || 0] };
+          getMIDIMessage(simulated);
+          return;
+        }
+
+        // Library/setlist management commands
+        if (parsed.type === 'selectLibrary') {
+          if (loadLibrary(parsed.name)) {
+            broadcastState();
+          }
+          return;
+        }
+
+        if (parsed.type === 'selectSetlist') {
+          if (loadSetlist(parsed.name)) {
+            broadcastState();
+          }
+          return;
+        }
+
+        if (parsed.type === 'getState') {
+          connection.sendUTF(JSON.stringify(getStatePayload()));
+          return;
+        }
+
+        // Jump to specific song by index
+        if (parsed.type === 'selectSong' && typeof parsed.index === 'number') {
+          var idx = parsed.index;
+          if (idx >= 0 && idx < setList.length) {
+            var item = setList[idx];
+            // If clicking on a divider, skip to next song
+            if (typeof item === 'object') {
+              console.log('Clicked on divider at index ' + idx + ', advancing to next song');
+              songPointer = idx;
+              if (advanceToNextSong()) {
+                sendSong(1); // load the song we advanced to
+              }
+            } else {
+              // Normal song selection
+              songPointer = idx - 1; // sendSong increments, so set one before
+              sendSong(1); // 1 = next (will increment to idx)
+            }
+          }
+          return;
+        }
+
+        // Transport commands from test harness
+        if (parsed.type === 'transport') {
+          if (parsed.action === 'play') transportPlay();
+          else if (parsed.action === 'pause') transportPause();
+          else if (parsed.action === 'stop') transportStop();
+          return;
+        }
+
+      } catch(e) {
+        // Not JSON, treat as regular message
+      }
+
       connection.sendUTF('Successfully connected to server!');
     });
     connection.on('close', function(reasonCode, description) {
         console.log('Client has disconnected.');
-    }); 
+        // Remove from connection list
+        var idx = remoteConnection.indexOf(connection);
+        if (idx > -1) remoteConnection.splice(idx, 1);
+    });
 });
 
 
-
-
+// ============================================================
+// MIDI Setup
+// ============================================================
 
 //test to see if the browser supports webMIDI
 if (navigator.requestMIDIAccess) {
@@ -81,6 +448,11 @@ function onMIDIFailure() {
     console.log('Error: Could not access MIDI devices.');
 }
 
+
+// ============================================================
+// MIDI Message Handling
+// ============================================================
+
 // Function to parse the MIDI messages we receive
 // For this app, we're only concerned with the actual note value,
 // but we can parse for other information, as well
@@ -102,68 +474,74 @@ function getMIDIMessage(message) {
         case 128: // note off
             noteOff(note);
             break;
-        case 194: // note off
+        case 194: // program change - song navigation
             sendSong(note);
             console.log('Midi Switch - Command: ' + command + ' Note: ' + note + ' velocity: ' + velocity)
             break;
-        // we could easily expand this switch statement to cover other types of commands such as controllers or sysex
+        case 250: // 0xFA - MIDI Start
+            console.log('MIDI: Start');
+            transport.elapsedAtPause = 0; // force fresh start
+            transport.state = 'stopped';
+            transportPlay();
+            break;
+        case 251: // 0xFB - MIDI Continue (resume from pause)
+            console.log('MIDI: Continue');
+            transportPlay();
+            break;
+        case 252: // 0xFC - MIDI Stop
+            console.log('MIDI: Stop');
+            transportStop();
+            break;
     }
 }
 
-var songPointer = -1;
-var setList = [
-"Matchbox20_3am.txt",
-"LostTrailers_AmericanBeauty.txt",
-"IronWine_Time_After_Time.txt",
-"JohnMellencamp_SmallTown.txt",
-"PearlJam_ElderlyWoman.txt",
-"TomWalker_BetterHalfofMe.txt",
-"GarthBrooks_TheRiver.txt",
-"BobSeger_Roll_Me_Away.txt",
-"TheLumineers_Cleopatra.txt",
-"ShawnJames_LikeAStone.txt",
-"VanMorrison_BrownEyedGirl.txt",
-"WhitneyHouston_IWannaDancewithSomebody.txt",
-"PaoloNutini_TheseStreets.txt",
-"CCR_SeenTheRain.txt",
-"MarcCohn_WalkinginMemphis.txt",
-"GeorgeEzra_Budapest.txt",
-"AmyWinehouse_Valerie.txt",
-"TheLumineers_Angela.txt",
-"GarthBrooks_StandingOutsidetheFire.txt",
-"JacksonBrowne_DoctorMyEyes.txt",
-"PaulSimon_CallMeAl.txt",
-"JoshRitter_Kathleen.txt"
-]
-var fs = require("fs");
 function sendSong(note) {
     console.log('entering sendSong - note: ' + note)
 
-    //if note is 2 descend, else ascend
+    //if note is 2 descend, else ascend (skip over dividers)
+    var success = false;
     if(note == 2) {
-        if(songPointer > 0) {
-            songPointer = songPointer - 1;
-        }
+        success = retreatToPrevSong();
     } else {
-        if(songPointer < setList.length-1) {
-            songPointer = songPointer + 1;
-        }
+        success = advanceToNextSong();
     }
 
-    //console.log('songPointer: ' + songPointer)
+    if (!success) {
+        console.log('No more songs in that direction');
+        broadcastState();
+        return;
+    }
 
-    var songSelected = setList[songPointer]
+    var songSelected = setList[songPointer];
+    
+    // Double-check it's a song, not a divider (shouldn't happen with helpers)
+    if (typeof songSelected !== 'string') {
+        console.log('ERROR: songPointer landed on a divider!');
+        return;
+    }
 
-    console.log('song = ' + songSelected)
+    var songPath = getSongPath(songSelected);
+
+    console.log('song = ' + songSelected + ' (path: ' + songPath + ')')
 
     try{
-        var songText = fs.readFileSync("./songs/" + songSelected).toString('utf-8');
+        var songText = fs.readFileSync(songPath).toString('utf-8');
+        var parsed = chordpro.parse(songText);
 
-        //console.log('songText = ' + songText)
+        // Reset transport on song change & update tempo from metadata
+        if (transport.state !== 'stopped') {
+            transport.state = 'stopped';
+            transport.elapsedAtPause = 0;
+            transport.playStartedAt = null;
+        }
+        if (parsed.metadata.tempo) {
+            transport.tempo = parsed.metadata.tempo;
+        }
 
         var payload = {
             "command": 0,
-            "song": songText
+            "song": parsed,
+            "songRaw": songText
         }
 
         var arrayLength = remoteConnection.length;
@@ -173,13 +551,15 @@ function sendSong(note) {
             console.log('songPointer: ' + songPointer)
         }
 
+        // Also broadcast updated state and transport reset so clients know the current position
+        broadcastState();
+        broadcastTransport();
+
     } catch(error) {
         console.log(error)
     }
 }
     
-
-
 
 // Function to handle noteOn messages (ie. key is pressed)
 // Think of this like an 'onkeydown' event

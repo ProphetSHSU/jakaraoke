@@ -1,28 +1,1000 @@
-//NOT THIS FILE - GO TO THE index.html file in /Users/jake/Sites/index.html
 <!DOCTYPE html>
 <html>
 <head>
-  <title>WebSocket Playground</title>
-  <p id="beatCount">Beats sent so far: 0</p>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jakeraoke</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --accent: #e94560;
+      --chord-color: #e94560;
+      --bg: #0a0a0a;
+      --bg-header: #111122;
+      --text: #e8e8e8;
+      --text-dim: #777799;
+      --comment-color: #7a8ba8;
+      --section-color: #d4a054;
+      --font-lyrics: 'Helvetica Neue', 'Segoe UI', Arial, sans-serif;
+      --font-chords: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      --font-size-lyrics: 22px;
+      --font-size-chords: calc(var(--font-size-lyrics) * 0.75);
+      --chord-height: 1.1em;
+    }
+
+    body {
+      font-family: var(--font-lyrics);
+      background: var(--bg);
+      color: var(--text);
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ========== HEADER BAR ========== */
+    .header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: var(--bg-header);
+      border-bottom: 3px solid var(--accent);
+      padding: 8px 20px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-height: 52px;
+    }
+
+    /* Beat pulse dot in header */
+    .beat-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #222;
+      flex-shrink: 0;
+      transition: background 0.06s;
+    }
+    .beat-dot.flash { background: var(--accent); }
+    .beat-dot.downbeat { background: #4ecca3; }
+
+    /* Color indicator stripe */
+    .color-stripe {
+      width: 5px;
+      height: 32px;
+      border-radius: 3px;
+      flex-shrink: 0;
+    }
+
+    .header-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: #fff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .header-artist {
+      font-size: 15px;
+      color: var(--text-dim);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .header-spacer { flex: 1; }
+    .header-meta {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      flex-shrink: 0;
+      font-size: 13px;
+      color: var(--text-dim);
+    }
+    .header-meta .tag {
+      background: #1a1a3a;
+      border: 1px solid #2a2a4a;
+      border-radius: 4px;
+      padding: 2px 8px;
+      white-space: nowrap;
+    }
+    .header-meta .tag .val { color: #4ecca3; font-weight: 600; }
+    .header-position {
+      font-size: 13px;
+      color: var(--text-dim);
+      white-space: nowrap;
+    }
+    .header-settime {
+      font-size: 12px;
+      color: var(--text-dim);
+      white-space: nowrap;
+      text-align: right;
+      line-height: 1.3;
+    }
+    .header-settime .elapsed { color: #4ecca3; font-weight: 600; }
+    .header-settime .remaining { color: var(--text-dim); }
+    .header-settime .sep { color: #333; margin: 0 2px; }
+
+    /* ========== WAKE LOCK TOGGLE (in status bar) ========== */
+    .wake-lock-toggle {
+      background: #1a1a2a;
+      border: 1px solid #2a2a3a;
+      border-radius: 4px;
+      padding: 4px 10px;
+      font-size: 11px;
+      color: #666;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.2s;
+      white-space: nowrap;
+      user-select: none;
+      flex-shrink: 0;
+    }
+    .wake-lock-toggle:hover {
+      background: #2a2a3a;
+      border-color: #3a3a4a;
+      color: #888;
+    }
+    .wake-lock-toggle.active {
+      background: #0a2a1a;
+      border-color: #4ecca3;
+      color: #4ecca3;
+    }
+    .wake-lock-toggle .icon {
+      font-size: 13px;
+    }
+    .wake-lock-toggle.not-supported {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    /* ========== SCROLL POSITION INDICATOR ========== */
+    .scroll-target-line {
+      position: fixed;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: rgba(78, 204, 163, 0.3);
+      pointer-events: none;
+      z-index: 5;
+      display: none;
+    }
+    .scroll-target-line.active {
+      display: block;
+    }
+
+    /* ========== STATUS BAR ========== */
+    .status-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: var(--bg-header);
+      border-top: 1px solid #1a1a3a;
+      padding: 3px 16px;
+      font-size: 11px;
+      color: #444;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      z-index: 10;
+    }
+    .status-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: #e94560;
+      flex-shrink: 0;
+    }
+    .status-dot.connected { background: #4ecca3; }
+    .status-text { flex: 1; }
+
+    /* ========== SONG CONTENT ========== */
+    .song-content {
+      padding: 16px 24px 60px 24px;
+      max-width: 960px;
+    }
+
+    /* Waiting state */
+    .waiting {
+      text-align: center;
+      padding: 120px 20px;
+      color: #444;
+    }
+    .waiting .icon { font-size: 56px; margin-bottom: 16px; }
+    .waiting .msg { font-size: 20px; }
+    .waiting .sub { font-size: 14px; margin-top: 8px; color: #333; }
+
+    /* ========== SECTION LABELS ========== */
+    .section-label {
+      color: var(--section-color);
+      font-size: 14px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-top: 12px;
+      margin-bottom: 2px;
+      padding-bottom: 1px;
+      border-bottom: 1px solid #3a2a15;
+    }
+
+    /* ========== COMMENTS ========== */
+    .comment {
+      color: var(--comment-color);
+      font-style: italic;
+      font-size: calc(var(--font-size-lyrics) * 0.85);
+      margin: 1px 0;
+      padding-left: 8px;
+      border-left: 2px solid #3a4a5a;
+    }
+
+    /* ========== SPACER ========== */
+    .spacer { height: 6px; }
+
+    /* ========== SONG LINES (the magic) ========== */
+    /*
+     * Each line is a div containing inline <span class="part"> elements.
+     * Parts with chords have data-chord="X" and render the chord as a
+     * ::before pseudo-element positioned above the text.
+     * Because parts are inline, text wraps naturally and chords stay
+     * anchored above their syllable.
+     */
+    .song-line {
+      position: relative;
+      padding-top: 0;
+      margin-bottom: 0;
+      font-size: var(--font-size-lyrics);
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+
+    /* Only add chord padding when line actually has chords */
+    .song-line.has-chords {
+      padding-top: var(--chord-height);
+    }
+
+    /* Chords-only lines: no lyric padding needed */
+    .song-line.chords-only {
+      padding-top: 0;
+      margin-bottom: 0;
+      line-height: 1.3;
+    }
+
+    .part {
+      position: relative;
+    }
+
+    /* Only short-text chord spans get inline-block for min-width support.
+       Applied via inline style in renderLine() when text < chord length. */
+    .part.chord-pad {
+      display: inline-block;
+      vertical-align: bottom;
+    }
+
+    .part[data-chord]::before {
+      content: attr(data-chord);
+      position: absolute;
+      top: -1.15em;
+      left: 0;
+      font-family: var(--font-chords);
+      font-size: var(--font-size-chords);
+      font-weight: 700;
+      color: var(--chord-color);
+      white-space: nowrap;
+      pointer-events: none;
+      background: var(--bg);
+      padding: 0 3px;
+      margin-left: -3px;
+    }
+
+    /* Chords-only: chords are the content, not positioned above */
+    .song-line.chords-only .part[data-chord]::before {
+      position: relative;
+      top: 0;
+      font-size: 18px;
+      margin-right: 6px;
+    }
+
+    /* ========== HIGHLIGHTS ========== */
+    .hl { font-weight: 600; }
+    .hl-1 { color: #ff6b6b; }
+    .hl-2 { color: #ffd93d; }
+    .hl-3 { color: #6bcb77; }
+    .hl-4 { color: #4d96ff; }
+    .hl-5 { color: #c77dff; }
+
+  </style>
 </head>
 <body>
 
-</body>
+  <!-- Header Bar -->
+  <div class="header" id="header" style="display:none;">
+    <div class="beat-dot" id="beatDot"></div>
+    <div class="color-stripe" id="colorStripe"></div>
+    <span class="header-title" id="hTitle"></span>
+    <span class="header-artist" id="hArtist"></span>
+    <span class="header-spacer"></span>
+    <span class="header-meta" id="hMeta"></span>
+    <span class="header-position" id="hPosition"></span>
+    <span class="header-settime" id="hSetTime"></span>
+  </div>
+
+  <!-- Scroll target line (shows where "now" is) -->
+  <div class="scroll-target-line" id="scrollTargetLine"></div>
+
+  <!-- Song Content -->
+  <div class="song-content" id="songContent">
+    <div class="waiting">
+      <div class="icon">🎸</div>
+      <div class="msg">Waiting for song...</div>
+      <div class="sub">Use pedal or test harness to navigate</div>
+    </div>
+  </div>
+
+  <!-- Status Bar -->
+  <div class="status-bar">
+    <div class="status-dot" id="statusDot"></div>
+    <span class="status-text" id="statusText">Connecting...</span>
+    <div class="wake-lock-toggle" id="wakeLockToggle" title="Keep screen awake">
+      <span class="icon" id="wakeLockIcon">🔅</span>
+      <span id="wakeLockText">Sleep</span>
+    </div>
+  </div>
+
 <script>
 
-const ws = new WebSocket('ws://localhost:9898/');
+// --- Config ---
+var WS_URL = 'ws://localhost:9898/';
 
-var beatCount = -1;
-ws.onopen = function() {
-    console.log('WebSocket Client Connected');
-    ws.send('Hi this is web client.');
+// Color map: song {color} tag → CSS color
+var COLOR_MAP = {
+  'G': '#4ecca3',  // Green (Lisa)
+  'P': '#c77dff',  // Purple (Jake)
+  'Y': '#ffd93d',  // Yellow (Both)
 };
 
-ws.onmessage = function(e) {
-  console.log("Received: '" + e.data + "'");
-  beatCount = beatCount + 1;
-  document.getElementById("beatCount").innerHTML = "Beats sent so far: " + beatCount;
+// Highlight color classes
+var HL_CLASSES = { 1: 'hl-1', 2: 'hl-2', 3: 'hl-3', 4: 'hl-4', 5: 'hl-5' };
+
+// --- State ---
+var currentState = null;  // last server state message
+
+// --- WebSocket ---
+var ws;
+function connectWebSocket() {
+  ws = new WebSocket(WS_URL);
+
+  ws.onopen = function() {
+    document.getElementById('statusDot').classList.add('connected');
+    document.getElementById('statusText').textContent = 'Connected';
+  };
+
+  ws.onclose = function() {
+    document.getElementById('statusDot').classList.remove('connected');
+    document.getElementById('statusText').textContent = 'Disconnected — retrying...';
+    setTimeout(connectWebSocket, 3000);
+  };
+
+  ws.onerror = function() {};
+
+  ws.onmessage = function(e) {
+    try {
+      var msg = JSON.parse(e.data);
+
+      // Song payload
+      if (msg.command === 0 && msg.song) {
+        renderSong(msg.song);
+        return;
+      }
+
+      // Beat messages
+      if (msg.command === 144) {
+        flashBeat(msg.note);
+        return;
+      }
+
+      // Transport update
+      if (msg.type === 'transport') {
+        handleTransport(msg);
+        return;
+      }
+
+      // State update
+      if (msg.type === 'state') {
+        currentState = msg;
+        updatePosition();
+        return;
+      }
+    } catch(err) {}
+  };
+}
+connectWebSocket();
+
+
+// --- Beat Flash ---
+var beatTimeout = null;
+function flashBeat(note) {
+  var el = document.getElementById('beatDot');
+  el.className = 'beat-dot ' + (note === 37 ? 'downbeat' : 'flash');
+  clearTimeout(beatTimeout);
+  beatTimeout = setTimeout(function() { el.className = 'beat-dot'; }, 100);
+}
+
+
+// --- Position & Set Time Display ---
+function updatePosition() {
+  if (!currentState) return;
+  var sp = currentState.songPointer;
+  var total = currentState.setList.length;
+  var durations = currentState.songDurations || [];
+
+  // Song position
+  var posEl = document.getElementById('hPosition');
+  posEl.textContent = sp >= 0 ? (sp + 1) + ' / ' + total : '';
+
+  // Set time tracking
+  var timeEl = document.getElementById('hSetTime');
+  if (durations.length === 0 || sp < 0) {
+    timeEl.innerHTML = formatTime(currentState.totalSetSeconds || 0) + ' total';
+    return;
+  }
+
+  // Elapsed = sum of durations for songs 0..songPointer (inclusive — current song counts as "in progress")
+  var elapsed = 0;
+  for (var i = 0; i <= sp; i++) {
+    elapsed += (durations[i] || 0);
+  }
+  var totalSet = currentState.totalSetSeconds || 0;
+  var remaining = totalSet - elapsed;
+
+  timeEl.innerHTML =
+    '<span class="elapsed">' + formatTime(elapsed) + '</span>' +
+    '<span class="sep"> / </span>' +
+    '<span class="remaining">' + formatTime(remaining) + ' left</span>';
+}
+
+function formatTime(seconds) {
+  if (!seconds || seconds <= 0) return '0:00';
+  var h = Math.floor(seconds / 3600);
+  var m = Math.floor((seconds % 3600) / 60);
+  var s = seconds % 60;
+  if (h > 0) {
+    return h + ':' + (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+  }
+  return m + ':' + (s < 10 ? '0' : '') + s;
+}
+
+
+// --- Song Renderer ---
+function renderSong(song) {
+  var meta = song.metadata || {};
+  var sections = song.sections || [];
+
+  // --- Header ---
+  var header = document.getElementById('header');
+  header.style.display = 'flex';
+
+  document.getElementById('hTitle').textContent = meta.title || 'Untitled';
+  document.getElementById('hArtist').textContent = meta.artist || '';
+
+  // Color stripe
+  var stripe = document.getElementById('colorStripe');
+  var accentColor = COLOR_MAP[meta.color] || '#555';
+  stripe.style.background = accentColor;
+
+  // Accent the header border to match song color
+  header.style.borderBottomColor = accentColor;
+
+  // Meta tags
+  var metaHtml = '';
+  if (meta.key) metaHtml += '<span class="tag">Key: <span class="val">' + esc(meta.key) + '</span></span>';
+  if (meta.tempo) metaHtml += '<span class="tag"><span class="val">' + meta.tempo + '</span> BPM</span>';
+  if (meta.duration) metaHtml += '<span class="tag">' + esc(meta.duration) + '</span>';
+  if (meta.capo) metaHtml += '<span class="tag">Capo <span class="val">' + meta.capo + '</span></span>';
+  document.getElementById('hMeta').innerHTML = metaHtml;
+
+  updatePosition();
+
+  // --- Sections ---
+  var content = document.getElementById('songContent');
+  var html = '';
+
+  for (var i = 0; i < sections.length; i++) {
+    var s = sections[i];
+
+    switch (s.type) {
+      case 'empty':
+        html += '<div class="spacer" data-section-index="' + i + '"></div>';
+        break;
+
+      case 'section':
+        html += '<div class="section-label" data-section-index="' + i + '">' + esc(s.label) + '</div>';
+        break;
+
+      case 'comment':
+        html += '<div class="comment" data-section-index="' + i + '">' + esc(s.text) + '</div>';
+        break;
+
+      case 'line':
+        html += renderLine(s, i);
+        break;
+
+      // timing, bar, bpb, pause — non-visual, used by scroll engine
+    }
+  }
+
+  content.innerHTML = html;
+
+  // Stop any active scrolling and reset to top
+  stopScrollLoop();
+  showTargetLine(false);
+  window.scrollTo(0, 0);
+
+  // Build scroll anchors after DOM is laid out
+  requestAnimationFrame(function() {
+    buildAnchors(song);
+  });
+}
+
+
+/**
+ * Render a song line with chords positioned above lyrics.
+ * Each part becomes an inline <span> with data-chord for the ::before pseudo-element.
+ * Highlight markers (>N...< ) are parsed into colored <span> elements.
+ */
+function renderLine(line, sectionIndex) {
+  var parts = line.parts;
+  var hasChords = parts.some(function(p) { return p.chord; });
+  var cls = 'song-line' + (line.chordsOnly ? ' chords-only' : '') + (hasChords ? ' has-chords' : '');
+  var indexAttr = sectionIndex !== undefined ? ' data-section-index="' + sectionIndex + '"' : '';
+  var html = '<div class="' + cls + '"' + indexAttr + '>';
+
+  for (var i = 0; i < parts.length; i++) {
+    var p = parts[i];
+    var text = p.text;
+    var chordAttr = p.chord ? ' data-chord="' + esc(p.chord) + '"' : '';
+
+    // When text under a chord is shorter than the chord name, the
+    // absolute-positioned ::before chord can overlap the next chord.
+    // Fix: make ONLY those spans inline-block with min-width.
+    // Long-text spans stay inline for natural line wrapping.
+    var padClass = '';
+    var styleAttr = '';
+    if (p.chord && p.text.trim().length <= p.chord.length) {
+      padClass = ' chord-pad';
+      var minW = (p.chord.length + 1) * 0.55;
+      styleAttr = ' style="min-width:' + minW.toFixed(2) + 'em"';
+    }
+
+    // Empty chord spans need a zero-width space so the inline-block
+    // has proper text metrics and baseline alignment with siblings.
+    if (p.chord && text.length === 0) {
+      text = '\u200B'; // zero-width space
+    }
+
+    // Process highlight markers in the text
+    var renderedText = renderHighlights(text);
+
+    html += '<span class="part' + padClass + '"' + chordAttr + styleAttr + '>' + renderedText + '</span>';
+  }
+
+  html += '</div>';
+  return html;
+}
+
+
+/**
+ * Parse highlight markers >N...< in text and wrap in colored spans.
+ * >5text< → <span class="hl hl-5">text</span>
+ * >text<  → <span class="hl hl-1">text</span>
+ * Text outside highlights is escaped normally.
+ */
+function renderHighlights(text) {
+  // Regex: >  optional digit  text  <
+  var re = />(\d?)([^<]*)</g;
+  var result = '';
+  var lastIndex = 0;
+  var match;
+
+  while ((match = re.exec(text)) !== null) {
+    // Text before the highlight
+    if (match.index > lastIndex) {
+      result += esc(text.substring(lastIndex, match.index));
+    }
+
+    var colorNum = match[1] ? parseInt(match[1], 10) : 1;
+    var hlClass = HL_CLASSES[colorNum] || 'hl-1';
+    result += '<span class="hl ' + hlClass + '">' + esc(match[2]) + '</span>';
+
+    lastIndex = re.lastIndex;
+  }
+
+  // Remaining text after last highlight
+  if (lastIndex < text.length) {
+    result += esc(text.substring(lastIndex));
+  }
+
+  return result;
+}
+
+
+function esc(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+
+// ============================================================
+// SCROLL ENGINE
+// ============================================================
+// Anchor-based interpolation: builds a time→pixelY map from
+// {d_time:} and {bar:} markers, then smoothly scrolls between
+// anchors at constant speed per segment.
+
+var scrollState = {
+  anchors: [],          // [{ time: seconds, pixelY: number }] sorted by time
+  transportState: 'stopped',  // 'stopped' | 'playing' | 'paused'
+  playStartedAt: null,  // performance.now() when play started/resumed
+  elapsedOffset: 0,     // seconds offset (for resume from pause)
+  songDuration: 0,      // total song duration in seconds
+  tempo: 120,           // BPM from server
+  bpb: 4,               // beats per bar
+  rafId: null,          // requestAnimationFrame handle
+  targetRatio: 0.33     // target line at 1/3 from top of viewport
 };
+
+/**
+ * Build the anchor array from the rendered song content.
+ * Called after renderSong() so DOM positions are available.
+ *
+ * Anchors come from:
+ * 1. {d_time:} markers → type='timing' in sections, time in seconds
+ * 2. {bar:N} markers → type='bar', converted to time via tempo/bpb
+ * 3. Implicit start (time=0, top of content) and end (duration, bottom)
+ */
+function buildAnchors(song) {
+  var sections = song.sections || [];
+  var meta = song.metadata || {};
+  var duration = meta.durationSeconds || 0;
+  var tempo = meta.tempo || 120;
+  var bpb = 4; // default beats per bar
+
+  scrollState.songDuration = duration;
+  scrollState.tempo = tempo;
+  scrollState.bpb = bpb;
+
+  var anchors = [];
+  var content = document.getElementById('songContent');
+  var contentTop = content.offsetTop;
+
+  // Walk through rendered children and match to sections with timing info.
+  // The renderer creates one DOM element per section entry, in order.
+  // We need to find which DOM child corresponds to each timing/bar section.
+  var domChildren = content.children;
+  var domIndex = 0;
+
+  for (var i = 0; i < sections.length; i++) {
+    var s = sections[i];
+
+    // Update beats per bar if we encounter a bpb marker
+    if (s.type === 'bpb') {
+      bpb = s.value || 4;
+      scrollState.bpb = bpb;
+      // bpb markers don't render a DOM element, skip
+      continue;
+    }
+
+    // Timing anchor: {d_time: M:SS}
+    if (s.type === 'timing') {
+      // The timing marker itself doesn't render, but the NEXT visible
+      // element after it is what should be at this time position.
+      // Find the pixel position of the next rendered element.
+      var pixelY = findNextRenderedPosition(sections, i, domChildren, content);
+      if (pixelY !== null && s.seconds !== null) {
+        anchors.push({ time: s.seconds, pixelY: pixelY });
+      }
+      continue;
+    }
+
+    // Bar anchor: {bar:N}
+    if (s.type === 'bar') {
+      var barTime = (s.bar - 1) * bpb * (60 / tempo);
+      var pixelY = findNextRenderedPosition(sections, i, domChildren, content);
+      if (pixelY !== null) {
+        anchors.push({ time: barTime, pixelY: pixelY });
+      }
+      continue;
+    }
+
+    // Pause markers — TODO: could pause scrolling for N seconds
+    if (s.type === 'pause') {
+      continue;
+    }
+
+    // Non-rendering types (tag, bpb) — skip without advancing DOM index
+    if (s.type === 'tag') {
+      continue;
+    }
+  }
+
+  // Implicit start anchor: time=0 at top of content
+  var startY = 0;
+  anchors.unshift({ time: 0, pixelY: startY });
+
+  // Implicit end anchor: duration at bottom of content
+  if (duration > 0) {
+    var endY = content.scrollHeight - window.innerHeight * scrollState.targetRatio;
+    endY = Math.max(endY, 0);
+    anchors.push({ time: duration, pixelY: endY });
+  }
+
+  // Sort by time and deduplicate (prefer later entries for same time)
+  anchors.sort(function(a, b) { return a.time - b.time; });
+
+  // Remove duplicate times (keep last)
+  var deduped = [];
+  for (var i = 0; i < anchors.length; i++) {
+    if (i < anchors.length - 1 && anchors[i].time === anchors[i + 1].time) {
+      continue; // skip, next one wins
+    }
+    deduped.push(anchors[i]);
+  }
+
+  scrollState.anchors = deduped;
+  console.log('Scroll anchors built: ' + deduped.length + ' anchors for ' + duration + 's song');
+  for (var i = 0; i < deduped.length; i++) {
+    console.log('  anchor[' + i + ']: time=' + deduped[i].time.toFixed(1) + 's  y=' + Math.round(deduped[i].pixelY) + 'px');
+  }
+}
+
+/**
+ * Find the pixel Y position of the next rendered (visible) element
+ * after section index `fromIndex` in the sections array.
+ *
+ * We use data-section-index attributes on rendered elements to map
+ * sections to DOM nodes.
+ */
+function findNextRenderedPosition(sections, fromIndex, domChildren, content) {
+  // Look forward from fromIndex for the next rendered section
+  for (var j = fromIndex + 1; j < sections.length; j++) {
+    var el = content.querySelector('[data-section-index="' + j + '"]');
+    if (el) {
+      return el.offsetTop - content.offsetTop;
+    }
+  }
+  // If nothing found after, use the bottom of content
+  return content.scrollHeight;
+}
+
+
+/**
+ * Handle transport messages from the server.
+ */
+function handleTransport(msg) {
+  var prevState = scrollState.transportState;
+  scrollState.transportState = msg.state;
+  scrollState.tempo = msg.tempo || 120;
+  scrollState.bpb = msg.bpb || 4;
+
+  if (msg.state === 'playing') {
+    // Start or resume scrolling
+    scrollState.elapsedOffset = msg.elapsed || 0;
+    scrollState.playStartedAt = performance.now() - (scrollState.elapsedOffset * 1000);
+    startScrollLoop();
+    showTargetLine(true);
+  } else if (msg.state === 'paused') {
+    // Freeze in place
+    scrollState.elapsedOffset = msg.elapsed || 0;
+    stopScrollLoop();
+  } else if (msg.state === 'stopped') {
+    // Reset to top
+    scrollState.elapsedOffset = 0;
+    scrollState.playStartedAt = null;
+    stopScrollLoop();
+    showTargetLine(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+}
+
+/**
+ * Get current elapsed time in seconds.
+ */
+function getElapsedTime() {
+  if (scrollState.transportState === 'playing' && scrollState.playStartedAt !== null) {
+    return (performance.now() - scrollState.playStartedAt) / 1000;
+  }
+  return scrollState.elapsedOffset;
+}
+
+/**
+ * Interpolate scroll position from anchors given current time.
+ * Returns the target scrollY value.
+ */
+function interpolateScroll(currentTime) {
+  var anchors = scrollState.anchors;
+  if (anchors.length === 0) return 0;
+
+  // Clamp to song duration
+  if (currentTime <= anchors[0].time) return anchors[0].pixelY;
+  if (currentTime >= anchors[anchors.length - 1].time) return anchors[anchors.length - 1].pixelY;
+
+  // Find the two anchors we're between
+  for (var i = 0; i < anchors.length - 1; i++) {
+    var a = anchors[i];
+    var b = anchors[i + 1];
+    if (currentTime >= a.time && currentTime < b.time) {
+      // Linear interpolation
+      var t = (currentTime - a.time) / (b.time - a.time);
+      return a.pixelY + t * (b.pixelY - a.pixelY);
+    }
+  }
+
+  return anchors[anchors.length - 1].pixelY;
+}
+
+/**
+ * The scroll animation frame loop.
+ */
+function scrollTick() {
+  if (scrollState.transportState !== 'playing') return;
+
+  var elapsed = getElapsedTime();
+  var targetY = interpolateScroll(elapsed);
+
+  // Offset so the target line is at 1/3 from top of viewport
+  // (targetY is the position of the "current" content in the document)
+  // We want that position to appear at targetRatio of the viewport
+  var viewportOffset = window.innerHeight * scrollState.targetRatio;
+  var scrollY = targetY - viewportOffset;
+  scrollY = Math.max(0, scrollY);
+
+  window.scrollTo(0, scrollY);
+
+  // Update target line position
+  updateTargetLine();
+
+  // Stop if we've reached the end
+  if (elapsed >= scrollState.songDuration && scrollState.songDuration > 0) {
+    // Song ended — stay at final position
+    return;
+  }
+
+  scrollState.rafId = requestAnimationFrame(scrollTick);
+}
+
+function startScrollLoop() {
+  stopScrollLoop();
+  scrollState.rafId = requestAnimationFrame(scrollTick);
+}
+
+function stopScrollLoop() {
+  if (scrollState.rafId) {
+    cancelAnimationFrame(scrollState.rafId);
+    scrollState.rafId = null;
+  }
+}
+
+/**
+ * Show/hide the subtle target line indicator.
+ */
+function showTargetLine(visible) {
+  var line = document.getElementById('scrollTargetLine');
+  if (visible) {
+    line.classList.add('active');
+    line.style.top = (window.innerHeight * scrollState.targetRatio) + 'px';
+  } else {
+    line.classList.remove('active');
+  }
+}
+
+function updateTargetLine() {
+  var line = document.getElementById('scrollTargetLine');
+  if (line.classList.contains('active')) {
+    line.style.top = (window.innerHeight * scrollState.targetRatio) + 'px';
+  }
+}
+
+
+// ============================================================
+// SCREEN WAKE LOCK
+// ============================================================
+// Keep the screen awake during performance to prevent auto-sleep
+
+var wakeLock = null;
+var wakeLockEnabled = localStorage.getItem('wakeLockEnabled') === 'true';
+
+// Check if Wake Lock API is supported
+var wakeLockSupported = 'wakeLock' in navigator;
+
+function initWakeLock() {
+  var toggle = document.getElementById('wakeLockToggle');
+  var icon = document.getElementById('wakeLockIcon');
+  var text = document.getElementById('wakeLockText');
+
+  if (!wakeLockSupported) {
+    toggle.classList.add('not-supported');
+    toggle.title = 'Wake Lock not supported in this browser';
+    text.textContent = 'N/A';
+    return;
+  }
+
+  // Set initial state from localStorage
+  if (wakeLockEnabled) {
+    requestWakeLock();
+  }
+
+  // Toggle on click
+  toggle.addEventListener('click', function() {
+    if (wakeLockEnabled) {
+      releaseWakeLock();
+    } else {
+      requestWakeLock();
+    }
+  });
+
+  // Re-acquire wake lock when page becomes visible again
+  document.addEventListener('visibilitychange', function() {
+    if (!document.hidden && wakeLockEnabled && wakeLock === null) {
+      requestWakeLock();
+    }
+  });
+
+  updateWakeLockUI();
+}
+
+async function requestWakeLock() {
+  if (!wakeLockSupported) return;
+
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLockEnabled = true;
+    localStorage.setItem('wakeLockEnabled', 'true');
+
+    wakeLock.addEventListener('release', function() {
+      console.log('Wake Lock released');
+    });
+
+    updateWakeLockUI();
+    console.log('Wake Lock acquired');
+  } catch (err) {
+    console.error('Wake Lock request failed:', err);
+    wakeLockEnabled = false;
+    updateWakeLockUI();
+  }
+}
+
+function releaseWakeLock() {
+  if (wakeLock !== null) {
+    wakeLock.release();
+    wakeLock = null;
+  }
+  wakeLockEnabled = false;
+  localStorage.setItem('wakeLockEnabled', 'false');
+  updateWakeLockUI();
+}
+
+function updateWakeLockUI() {
+  var toggle = document.getElementById('wakeLockToggle');
+  var icon = document.getElementById('wakeLockIcon');
+  var text = document.getElementById('wakeLockText');
+
+  if (!wakeLockSupported) return;
+
+  if (wakeLockEnabled && wakeLock !== null) {
+    toggle.classList.add('active');
+    icon.textContent = '🔆';
+    text.textContent = 'Awake';
+    toggle.title = 'Screen will stay on (click to allow sleep)';
+  } else {
+    toggle.classList.remove('active');
+    icon.textContent = '🔅';
+    text.textContent = 'Sleep';
+    toggle.title = 'Screen may sleep (click to keep awake)';
+  }
+}
+
+// Initialize wake lock on page load
+initWakeLock();
+
 
 </script>
+</body>
 </html>

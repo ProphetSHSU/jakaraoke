@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jakeraoke - Test Harness</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      padding: 20px;
+    }
+    h1 { color: #e94560; margin-bottom: 4px; font-size: 24px; }
+    h2 { color: #0f3460; font-size: 14px; font-weight: normal; margin-bottom: 20px; }
+    h3 { color: #e94560; margin-bottom: 12px; font-size: 16px; }
+
+    .status-bar {
+      background: #16213e;
+      border: 1px solid #0f3460;
+      border-radius: 8px;
+      padding: 10px 16px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .status-dot {
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      background: #e94560;
+      flex-shrink: 0;
+    }
+    .status-dot.connected { background: #4ecca3; }
+    .status-text { font-size: 14px; flex: 1; }
+
+    .wake-lock-btn {
+      background: #1a1a2e;
+      border: 2px solid #0f3460;
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 12px;
+      color: #e0e0e0;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+      white-space: nowrap;
+      user-select: none;
+    }
+    .wake-lock-btn:hover {
+      background: #0f3460;
+      border-color: #4ecca3;
+    }
+    .wake-lock-btn.active {
+      background: #0f3a30;
+      border-color: #4ecca3;
+      color: #4ecca3;
+    }
+    .wake-lock-btn .icon {
+      font-size: 14px;
+    }
+    .wake-lock-btn.not-supported {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .panels {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+
+    .panel {
+      background: #16213e;
+      border: 1px solid #0f3460;
+      border-radius: 12px;
+      padding: 20px;
+    }
+
+    /* Pedal Board */
+    .pedal-board {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      margin-bottom: 16px;
+    }
+    .pedal-btn {
+      width: 120px; height: 80px;
+      border: 2px solid #0f3460;
+      border-radius: 12px;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      font-size: 14px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.1s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .pedal-btn:hover { background: #0f3460; }
+    .pedal-btn:active { background: #e94560; transform: scale(0.96); }
+
+    .song-info {
+      text-align: center;
+      padding: 12px;
+      background: #1a1a2e;
+      border-radius: 8px;
+      font-size: 13px;
+      color: #8888aa;
+    }
+    .song-info .current-song {
+      color: #4ecca3;
+      font-size: 16px;
+      font-weight: bold;
+      margin-top: 4px;
+    }
+
+    /* Ableton Transport */
+    .transport-controls {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 16px;
+    }
+    .transport-btn {
+      width: 64px; height: 64px;
+      border: 2px solid #0f3460;
+      border-radius: 50%;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      font-size: 24px;
+      cursor: pointer;
+      transition: all 0.1s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .transport-btn:hover { background: #0f3460; }
+    .transport-btn.playing { background: #e94560; border-color: #e94560; }
+    .transport-btn.stop-btn:hover { background: #e94560; }
+
+    .bpm-control {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .bpm-control label { font-size: 13px; color: #8888aa; }
+    .bpm-control input[type="range"] { width: 160px; accent-color: #e94560; }
+    .bpm-value {
+      font-size: 20px;
+      font-weight: bold;
+      color: #4ecca3;
+      min-width: 70px;
+      text-align: center;
+    }
+
+    .beat-display {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      margin-bottom: 12px;
+    }
+    .beat-dot {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: #0f3460;
+      transition: background 0.08s;
+    }
+    .beat-dot.active { background: #e94560; }
+    .beat-dot.downbeat { background: #4ecca3; }
+
+    .measure-info {
+      text-align: center;
+      font-size: 14px;
+      color: #8888aa;
+    }
+    .measure-info span { color: #4ecca3; font-weight: bold; }
+
+    /* Event Log */
+    .log-panel {
+      grid-column: 1 / -1;
+    }
+    .event-log {
+      background: #0d0d1a;
+      border: 1px solid #0f3460;
+      border-radius: 8px;
+      padding: 12px;
+      height: 160px;
+      overflow-y: auto;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    .log-entry { color: #8888aa; }
+    .log-entry .time { color: #0f3460; }
+    .log-entry .cmd { color: #e94560; }
+    .log-entry .note { color: #4ecca3; }
+
+    /* Library & Setlist Bar */
+    .library-bar {
+      background: #16213e;
+      border: 1px solid #0f3460;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+    .library-bar label {
+      font-size: 13px;
+      color: #8888aa;
+      white-space: nowrap;
+    }
+    .library-bar select {
+      background: #1a1a2e;
+      color: #e0e0e0;
+      border: 1px solid #0f3460;
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 14px;
+      cursor: pointer;
+      min-width: 180px;
+    }
+    .library-bar select:focus {
+      outline: none;
+      border-color: #e94560;
+    }
+    .library-bar .song-count {
+      font-size: 13px;
+      color: #4ecca3;
+      margin-left: auto;
+    }
+
+    /* Keyboard shortcuts hint */
+    .shortcuts {
+      text-align: center;
+      font-size: 12px;
+      color: #555;
+      margin-top: 12px;
+    }
+    kbd {
+      background: #0f3460;
+      border: 1px solid #1a3a6e;
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-size: 11px;
+      color: #e0e0e0;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>🎛️ Jakeraoke Test Harness</h1>
+  <h2>Simulate MIDI events without hardware</h2>
+
+  <div class="status-bar">
+    <div class="status-dot" id="statusDot"></div>
+    <span class="status-text" id="statusText">Connecting to ws://localhost:9898/ ...</span>
+    <div class="wake-lock-btn" id="wakeLockBtn" title="Keep screen awake">
+      <span class="icon" id="wakeLockIcon">🔅</span>
+      <span id="wakeLockText">Screen Sleep</span>
+    </div>
+  </div>
+
+  <div class="library-bar">
+    <label>📚 Library:</label>
+    <select id="librarySelect" onchange="onLibraryChange()">
+      <option value="">Loading...</option>
+    </select>
+    <label>📋 Setlist:</label>
+    <select id="setlistSelect" onchange="onSetlistChange()">
+      <option value="">All Songs</option>
+    </select>
+    <label>🎵 Song:</label>
+    <select id="songSelect" onchange="onSongSelect()" style="max-width:320px;">
+      <option value="">— select song —</option>
+    </select>
+    <span class="song-count" id="songCount"></span>
+  </div>
+
+  <div class="panels">
+
+    <!-- Pedal Board -->
+    <div class="panel">
+      <h3>🎸 Pedal Board</h3>
+      <div class="pedal-board">
+        <button class="pedal-btn" id="prevBtn" onclick="sendPedal('prev')">⬅ Prev<br>Song</button>
+        <button class="pedal-btn" id="nextBtn" onclick="sendPedal('next')">Next ➡<br>Song</button>
+      </div>
+      <div class="song-info">
+        <div>Song <span id="songIndex">-</span> of <span id="songTotal">22</span></div>
+        <div class="current-song" id="currentSong">No song selected</div>
+      </div>
+    </div>
+
+    <!-- Ableton Transport -->
+    <div class="panel">
+      <h3>🎵 Ableton Transport</h3>
+      <div class="transport-controls">
+        <button class="transport-btn" id="playBtn" onclick="togglePlay()" title="Play/Pause">▶</button>
+        <button class="transport-btn stop-btn" id="stopBtn" onclick="stopTransport()" title="Stop & Reset">⏹</button>
+      </div>
+      <div class="bpm-control">
+        <label>BPM</label>
+        <input type="range" id="bpmSlider" min="60" max="200" value="120" oninput="updateBpm()">
+        <div class="bpm-value" id="bpmValue">120</div>
+      </div>
+      <div class="beat-display">
+        <div class="beat-dot" id="beat0"></div>
+        <div class="beat-dot" id="beat1"></div>
+        <div class="beat-dot" id="beat2"></div>
+        <div class="beat-dot" id="beat3"></div>
+      </div>
+      <div class="measure-info">
+        Measure: <span id="measureNum">-</span> &nbsp; Beat: <span id="beatNum">-</span>
+      </div>
+    </div>
+
+    <!-- Event Log -->
+    <div class="panel log-panel">
+      <h3>📊 Event Log</h3>
+      <div class="event-log" id="eventLog"></div>
+    </div>
+
+  </div>
+
+  <div class="shortcuts">
+    Keyboard: <kbd>←</kbd> Prev Song &nbsp; <kbd>→</kbd> Next Song &nbsp;
+    <kbd>Space</kbd> Play/Pause &nbsp; <kbd>Esc</kbd> Stop
+  </div>
+
+<script>
+
+// --- Configuration ---
+const WS_URL = 'ws://localhost:9898/';
+
+// --- State (driven by server) ---
+var serverState = {
+  libraries: [],
+  activeLibrary: null,
+  availableSetlists: [],
+  activeSetlist: null,
+  setList: [],
+  songPointer: -1
+};
+var songPointer = -1;
+var isPlaying = false;
+var beatInterval = null;
+var currentBeat = 0;   // 0-3 within a measure
+var currentMeasure = -1;
+var isFirstBeat = true;
+
+// --- WebSocket ---
+var ws;
+function connectWebSocket() {
+  ws = new WebSocket(WS_URL);
+
+  ws.onopen = function() {
+    document.getElementById('statusDot').classList.add('connected');
+    document.getElementById('statusText').textContent = 'Connected to ' + WS_URL;
+    log('Connected to server', 'system');
+  };
+
+  ws.onclose = function() {
+    document.getElementById('statusDot').classList.remove('connected');
+    document.getElementById('statusText').textContent = 'Disconnected — retrying in 3s...';
+    log('Disconnected from server', 'system');
+    setTimeout(connectWebSocket, 3000);
+  };
+
+  ws.onerror = function() {
+    log('WebSocket error', 'system');
+  };
+
+  ws.onmessage = function(e) {
+    try {
+      var msg = JSON.parse(e.data);
+      if (msg.type === 'state') {
+        handleStateUpdate(msg);
+      }
+    } catch(err) {
+      // Non-JSON message, ignore
+    }
+  };
+}
+connectWebSocket();
+
+// --- Send simulated MIDI ---
+function sendMidi(command, note, velocity) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    log('Not connected — cannot send', 'system');
+    return;
+  }
+  var msg = { type: 'simulate', command: command, note: note, velocity: velocity || 0 };
+  ws.send(JSON.stringify(msg));
+}
+
+// --- Pedal Board ---
+function sendPedal(direction) {
+  if (direction === 'prev') {
+    sendMidi(194, 2, 0);
+  } else {
+    sendMidi(194, 1, 0);
+  }
+  // Server will broadcast updated state with new songPointer
+  log('Pedal: ' + direction.toUpperCase(), 'pedal');
+
+  // Reset transport when changing songs
+  stopTransport();
+}
+
+function prettySongName(name) {
+  if (!name) return '?';
+  return name.replace('.txt', '').replace(/_/g, ' ').replace(/ - /g, ' — ');
+}
+
+function updateSongDisplay() {
+  var sp = serverState.songPointer;
+  var sl = serverState.setList;
+  document.getElementById('songIndex').textContent = sp >= 0 ? (sp + 1) : '-';
+  document.getElementById('songTotal').textContent = sl.length;
+  document.getElementById('currentSong').textContent = sp >= 0 && sp < sl.length ? prettySongName(sl[sp]) : 'No song selected';
+}
+
+// --- Ableton Transport ---
+function togglePlay() {
+  if (isPlaying) {
+    pauseTransport();
+  } else {
+    startTransport();
+  }
+}
+
+function startTransport() {
+  if (isPlaying) return;
+  isPlaying = true;
+  isFirstBeat = true;
+  currentBeat = 0;
+  currentMeasure = -1;
+
+  document.getElementById('playBtn').classList.add('playing');
+  document.getElementById('playBtn').textContent = '⏸';
+
+  log('Transport: PLAY at ' + document.getElementById('bpmValue').textContent + ' BPM', 'transport');
+
+  // Tell server to start scrolling
+  sendTransportCommand('play');
+
+  // Send first beat immediately
+  sendBeat();
+
+  // Schedule subsequent beats
+  var bpm = parseInt(document.getElementById('bpmSlider').value);
+  beatInterval = setInterval(sendBeat, 60000 / bpm);
+}
+
+function pauseTransport() {
+  isPlaying = false;
+  clearInterval(beatInterval);
+  beatInterval = null;
+
+  document.getElementById('playBtn').classList.remove('playing');
+  document.getElementById('playBtn').textContent = '▶';
+
+  // Tell server to pause scrolling
+  sendTransportCommand('pause');
+
+  log('Transport: PAUSED at measure ' + currentMeasure + ', beat ' + (currentBeat + 1), 'transport');
+}
+
+function stopTransport() {
+  isPlaying = false;
+  clearInterval(beatInterval);
+  beatInterval = null;
+  currentBeat = 0;
+  currentMeasure = -1;
+  isFirstBeat = true;
+
+  document.getElementById('playBtn').classList.remove('playing');
+  document.getElementById('playBtn').textContent = '▶';
+  document.getElementById('measureNum').textContent = '-';
+  document.getElementById('beatNum').textContent = '-';
+
+  // Clear beat dots
+  for (var i = 0; i < 4; i++) {
+    document.getElementById('beat' + i).className = 'beat-dot';
+  }
+
+  // Tell server to stop scrolling (resets to top)
+  sendTransportCommand('stop');
+
+  log('Transport: STOPPED', 'transport');
+}
+
+function sendTransportCommand(action) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ type: 'transport', action: action }));
+}
+
+function sendBeat() {
+  if (currentBeat === 0) {
+    // Downbeat (beat 1 of measure)
+    currentMeasure++;
+    var velocity = isFirstBeat ? 1 : 100;
+    sendMidi(144, 37, velocity);
+    isFirstBeat = false;
+    log('Beat: measure ' + currentMeasure + ' beat 1 (note 37, vel ' + velocity + ')', 'beat');
+  } else {
+    // Beats 2, 3, 4
+    sendMidi(144, 36, 100);
+    log('Beat: measure ' + currentMeasure + ' beat ' + (currentBeat + 1) + ' (note 36)', 'beat');
+  }
+
+  // Update UI
+  updateBeatDisplay();
+
+  // Advance beat
+  currentBeat = (currentBeat + 1) % 4;
+}
+
+function updateBeatDisplay() {
+  document.getElementById('measureNum').textContent = currentMeasure;
+  document.getElementById('beatNum').textContent = currentBeat + 1;
+
+  // Update beat dots
+  for (var i = 0; i < 4; i++) {
+    var dot = document.getElementById('beat' + i);
+    if (i === currentBeat) {
+      dot.className = 'beat-dot ' + (currentBeat === 0 ? 'downbeat' : 'active');
+    } else {
+      dot.className = 'beat-dot';
+    }
+  }
+}
+
+function updateBpm() {
+  var bpm = document.getElementById('bpmSlider').value;
+  document.getElementById('bpmValue').textContent = bpm;
+
+  // If playing, restart interval with new BPM
+  if (isPlaying) {
+    clearInterval(beatInterval);
+    beatInterval = setInterval(sendBeat, 60000 / bpm);
+  }
+}
+
+// --- Server State Handling ---
+function handleStateUpdate(state) {
+  serverState = state;
+  songPointer = state.songPointer;
+
+  // Update library dropdown
+  var libSelect = document.getElementById('librarySelect');
+  var currentLibValue = libSelect.value;
+  libSelect.innerHTML = '';
+  state.libraries.forEach(function(name) {
+    var opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    if (name === state.activeLibrary) opt.selected = true;
+    libSelect.appendChild(opt);
+  });
+
+  // Update setlist dropdown
+  var setlistSelect = document.getElementById('setlistSelect');
+  var currentSetlistValue = setlistSelect.value;
+  setlistSelect.innerHTML = '<option value="">All Songs</option>';
+  state.availableSetlists.forEach(function(name) {
+    var opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    if (name === state.activeSetlist) opt.selected = true;
+    setlistSelect.appendChild(opt);
+  });
+  if (!state.activeSetlist) {
+    setlistSelect.value = '';
+  }
+
+  // Update song count (count only songs, not dividers)
+  var songCount = state.setList.filter(function(item) {
+    return typeof item === 'string';
+  }).length;
+  var dividerCount = state.setList.length - songCount;
+  var countText = songCount + ' songs';
+  if (dividerCount > 0) {
+    countText += ' (' + dividerCount + ' set break' + (dividerCount > 1 ? 's' : '') + ')';
+  }
+  document.getElementById('songCount').textContent = countText;
+
+  // Update song dropdown and display
+  updateSongDropdown();
+  updateSongDisplay();
+
+  log('State: library="' + state.activeLibrary + '" setlist="' + (state.activeSetlist || 'All Songs') + '" songs=' + songCount + ' pos=' + state.songPointer, 'state');
+}
+
+function onLibraryChange() {
+  var name = document.getElementById('librarySelect').value;
+  if (!name || !ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ type: 'selectLibrary', name: name }));
+  log('Switching library to: ' + name, 'cmd');
+}
+
+function onSetlistChange() {
+  var name = document.getElementById('setlistSelect').value || null;
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ type: 'selectSetlist', name: name }));
+  log('Switching setlist to: ' + (name || 'All Songs'), 'cmd');
+}
+
+function onSongSelect() {
+  var idx = parseInt(document.getElementById('songSelect').value);
+  if (isNaN(idx) || !ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ type: 'selectSong', index: idx }));
+  log('Jumping to song: ' + serverState.setList[idx], 'cmd');
+  stopTransport();
+}
+
+function updateSongDropdown() {
+  var sel = document.getElementById('songSelect');
+  var currentVal = sel.value;
+  sel.innerHTML = '<option value="">— select song —</option>';
+  serverState.setList.forEach(function(item, i) {
+    var opt = document.createElement('option');
+
+    // Check if item is a divider object
+    if (typeof item === 'object' && item.type === 'divider') {
+      opt.value = '';
+      opt.disabled = true;
+      opt.textContent = '═══ SET BREAK ═══';
+      opt.style.fontWeight = 'bold';
+      opt.style.textAlign = 'center';
+      opt.style.backgroundColor = '#f0f0f0';
+    } else {
+      // Regular song
+      opt.value = i;
+      opt.textContent = (i + 1) + '. ' + item;
+      if (i === serverState.songPointer) opt.selected = true;
+    }
+
+    sel.appendChild(opt);
+  });
+}
+
+// --- Event Log ---
+function log(message, type) {
+  var logEl = document.getElementById('eventLog');
+  var time = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  var colorClass = type === 'beat' ? 'note' : 'cmd';
+  logEl.innerHTML += '<div class="log-entry"><span class="time">' + time + '</span> <span class="' + colorClass + '">[' + type + ']</span> ' + message + '</div>';
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+// --- Keyboard Shortcuts ---
+document.addEventListener('keydown', function(e) {
+  switch(e.key) {
+    case 'ArrowLeft':
+      e.preventDefault();
+      sendPedal('prev');
+      break;
+    case 'ArrowRight':
+      e.preventDefault();
+      sendPedal('next');
+      break;
+    case ' ':
+      e.preventDefault();
+      togglePlay();
+      break;
+    case 'Escape':
+      e.preventDefault();
+      stopTransport();
+      break;
+  }
+});
+
+// --- Screen Wake Lock ---
+var wakeLock = null;
+var wakeLockEnabled = localStorage.getItem('wakeLockEnabled') === 'true';
+var wakeLockSupported = 'wakeLock' in navigator;
+
+function initWakeLock() {
+  var btn = document.getElementById('wakeLockBtn');
+  var icon = document.getElementById('wakeLockIcon');
+  var text = document.getElementById('wakeLockText');
+
+  if (!wakeLockSupported) {
+    btn.classList.add('not-supported');
+    btn.title = 'Wake Lock not supported in this browser';
+    text.textContent = 'N/A';
+    return;
+  }
+
+  if (wakeLockEnabled) {
+    requestWakeLock();
+  }
+
+  btn.addEventListener('click', function() {
+    if (wakeLockEnabled) {
+      releaseWakeLock();
+    } else {
+      requestWakeLock();
+    }
+  });
+
+  document.addEventListener('visibilitychange', function() {
+    if (!document.hidden && wakeLockEnabled && wakeLock === null) {
+      requestWakeLock();
+    }
+  });
+
+  updateWakeLockUI();
+}
+
+async function requestWakeLock() {
+  if (!wakeLockSupported) return;
+
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLockEnabled = true;
+    localStorage.setItem('wakeLockEnabled', 'true');
+
+    wakeLock.addEventListener('release', function() {
+      log('Wake Lock released', 'state');
+    });
+
+    updateWakeLockUI();
+    log('Wake Lock acquired - screen will stay on', 'state');
+  } catch (err) {
+    log('Wake Lock request failed: ' + err.message, 'state');
+    wakeLockEnabled = false;
+    updateWakeLockUI();
+  }
+}
+
+function releaseWakeLock() {
+  if (wakeLock !== null) {
+    wakeLock.release();
+    wakeLock = null;
+  }
+  wakeLockEnabled = false;
+  localStorage.setItem('wakeLockEnabled', 'false');
+  updateWakeLockUI();
+  log('Wake Lock released - screen may sleep', 'state');
+}
+
+function updateWakeLockUI() {
+  var btn = document.getElementById('wakeLockBtn');
+  var icon = document.getElementById('wakeLockIcon');
+  var text = document.getElementById('wakeLockText');
+
+  if (!wakeLockSupported) return;
+
+  if (wakeLockEnabled && wakeLock !== null) {
+    btn.classList.add('active');
+    icon.textContent = '🔆';
+    text.textContent = 'Screen Awake';
+    btn.title = 'Screen will stay on (click to disable)';
+  } else {
+    btn.classList.remove('active');
+    icon.textContent = '🔅';
+    text.textContent = 'Screen Sleep';
+    btn.title = 'Screen may sleep (click to keep awake)';
+  }
+}
+
+initWakeLock();
+
+</script>
+</body>
+</html>

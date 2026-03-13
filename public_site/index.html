@@ -4,11 +4,12 @@
 
 <head>
 
-  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="32x32" href="./favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="./favicon-16x16.png">
   <link rel="icon" href="./favicon.ico">
-  <link rel="manifest" href="./site.webmanifest">
+  <!-- manifest disabled for file:// development; re-enable if served over HTTP -->
+  <!-- <link rel="manifest" href="./site.webmanifest"> -->
 
   <link rel="stylesheet" href="styles.css">
 
@@ -44,8 +45,8 @@
 
 <script>
 
-const ws = new WebSocket('ws://192.168.1.34:9898/');
-//const ws = new WebSocket('ws://locahost:9898/');
+//const ws = new WebSocket('ws://192.168.1.34:9898/');
+const ws = new WebSocket('ws://localhost:9898/');
 
 var beatCount = -1;
 var measure = -2;
@@ -125,6 +126,9 @@ ws.onopen = function() {
 
 ws.onmessage = function(e) {
   //console.log("Received: '" + e.data + "'");
+
+  // Ignore non-JSON messages (e.g. server connection confirmation)
+  if (!e.data.startsWith('{')) return;
 
   try {
     var midiPayload = JSON.parse(e.data);

@@ -1,0 +1,18 @@
+.DS_Store
+.server.pid
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+env/
+
+# Node
+node_modules/
+
+# Alignment output and staging
+alignment/output/
+alignment/staging/

@@ -1,0 +1,32 @@
+# Alignment Gaps — 2026-03-12
+# Songs that could benefit from better audio sources or manual marker tweaking
+
+## ZERO MATCH — need non-karaoke versions with vocals (2)
+Fountains of Wayne - Stacys Mom          0%   0 markers
+Green Day - Basket Case                  0%   0 markers
+
+## POOR ALIGNMENT — have some markers but low confidence (9)
+Madonna - Material Girl                 46%   7 markers  (cover version - The Happy Problem)
+Elton John - Rocketman                  44%   6 markers  (music video audio, no artist in filename)
+Pink - Raise Your Glass                 43%   8 markers
+Ace Suggs - Journey v Prince            42%  12 markers  (medley - this is probably the ceiling)
+Taylor Swift - Bad Blood                32%   9 markers
+Paula Abdul - Straight Up               30%   7 markers  (cover - Me First and the Gimme Gimmes)
+Nirvana - Smells Like Teen Spirit       29%  10 markers
+Goldfinger - 99 Red Balloons            21%   6 markers
+Nirvana Jackson - Billie Teen           19%   8 markers
+
+## SKIPPED — no audio sourced yet (2)
+Imagine Dragons - Radioactive
+Queen - We Will Rock You
+
+## ACCEPTED AS-IS — lower match but keeping current markers (2)
+Bowling for Soup - 1985                 46%  10 markers
+Fall Out Boy - Beat It                  47%   6 markers
+
+# Tips for improving:
+# - Covers/mashups will always score lower (different vocal timing)
+# - Original studio recordings with clear vocals work best
+# - Place files in: /Volumes/Macintosh HD-1/Users/jake/Music/from youtube and others/
+# - Include artist name in filename for fuzzy matching
+# - Re-run: cd alignment && python batch.py --reprocess
