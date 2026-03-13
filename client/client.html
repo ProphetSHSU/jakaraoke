@@ -943,21 +943,38 @@ function updateTargetLine() {
 
 var wakeLock = null;
 var wakeLockEnabled = localStorage.getItem('wakeLockEnabled') === 'true';
+var noSleepVideo = null; // Fallback for mobile browsers
 
 // Check if Wake Lock API is supported
 var wakeLockSupported = 'wakeLock' in navigator;
+
+// Create invisible video element for mobile fallback (NoSleep.js technique)
+function createNoSleepVideo() {
+  if (noSleepVideo) return;
+
+  noSleepVideo = document.createElement('video');
+  noSleepVideo.setAttribute('playsinline', '');
+  noSleepVideo.setAttribute('muted', '');
+  noSleepVideo.style.position = 'absolute';
+  noSleepVideo.style.left = '-9999px';
+  noSleepVideo.style.width = '1px';
+  noSleepVideo.style.height = '1px';
+
+  // Tiny WebM video that loops (keeps device awake)
+  var webmData = 'data:video/webm;base64,GkXfo0AgQoaBAUL3gQFC8oEEQvOBCEKCQAR3ZWJtQoeBAkKFgQIYU4BnQI0VSalmQCgq17FAAw9CQE2AQAZ3aGFtbXlXQUAGd2hhbW15RIlACECPQAAAAAAAFlSua0AxrkAu14EBY8WBAZyBACK1nEADdW5khkAFVl9WUDglhohAA1ZQOIOBAeBABrCBCLqBCB9DtnVAIueBAKNAHIEAAIAwAQCdASoIAAgAAUAmJaQAA3AA/vz0AAA=';
+  noSleepVideo.src = webmData;
+  noSleepVideo.loop = true;
+
+  document.body.appendChild(noSleepVideo);
+}
 
 function initWakeLock() {
   var toggle = document.getElementById('wakeLockToggle');
   var icon = document.getElementById('wakeLockIcon');
   var text = document.getElementById('wakeLockText');
 
-  if (!wakeLockSupported) {
-    toggle.classList.add('not-supported');
-    toggle.title = 'Wake Lock not supported in this browser';
-    text.textContent = 'N/A';
-    return;
-  }
+  // Even if native API not supported, we have video fallback
+  // So never show "N/A" - always allow toggle
 
   // Set initial state from localStorage
   if (wakeLockEnabled) {
@@ -984,33 +1001,51 @@ function initWakeLock() {
 }
 
 async function requestWakeLock() {
-  if (!wakeLockSupported) return;
+  wakeLockEnabled = true;
+  localStorage.setItem('wakeLockEnabled', 'true');
 
-  try {
-    wakeLock = await navigator.wakeLock.request('screen');
-    wakeLockEnabled = true;
-    localStorage.setItem('wakeLockEnabled', 'true');
-
-    wakeLock.addEventListener('release', function() {
-      console.log('Wake Lock released');
-    });
-
-    updateWakeLockUI();
-    console.log('Wake Lock acquired');
-  } catch (err) {
-    console.error('Wake Lock request failed:', err);
-    wakeLockEnabled = false;
-    updateWakeLockUI();
+  // Try native Wake Lock API first
+  if (wakeLockSupported) {
+    try {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', function() {
+        console.log('Wake Lock released');
+      });
+      console.log('Wake Lock acquired (native API)');
+      updateWakeLockUI();
+      return;
+    } catch (err) {
+      console.log('Native Wake Lock failed, using video fallback:', err.message);
+    }
   }
+
+  // Fallback: use invisible video for mobile browsers
+  createNoSleepVideo();
+  try {
+    await noSleepVideo.play();
+    console.log('Wake Lock acquired (video fallback)');
+  } catch (err) {
+    console.error('Wake Lock fallback failed:', err);
+  }
+
+  updateWakeLockUI();
 }
 
 function releaseWakeLock() {
+  wakeLockEnabled = false;
+  localStorage.setItem('wakeLockEnabled', 'false');
+
+  // Release native wake lock
   if (wakeLock !== null) {
     wakeLock.release();
     wakeLock = null;
   }
-  wakeLockEnabled = false;
-  localStorage.setItem('wakeLockEnabled', 'false');
+
+  // Stop fallback video
+  if (noSleepVideo) {
+    noSleepVideo.pause();
+  }
+
   updateWakeLockUI();
 }
 
@@ -1019,9 +1054,7 @@ function updateWakeLockUI() {
   var icon = document.getElementById('wakeLockIcon');
   var text = document.getElementById('wakeLockText');
 
-  if (!wakeLockSupported) return;
-
-  if (wakeLockEnabled && wakeLock !== null) {
+  if (wakeLockEnabled) {
     toggle.classList.add('active');
     icon.textContent = '🔆';
     text.textContent = 'Awake';
