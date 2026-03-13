@@ -342,7 +342,9 @@
 <script>
 
 // --- Configuration ---
-const WS_URL = 'ws://localhost:9898/';
+// Auto-detect WebSocket URL from current page location (works locally and over network)
+const WS_URL = 'ws://' + (window.location.host || 'localhost:9898') + '/';
+console.log('WebSocket URL: ' + WS_URL);
 
 // --- State (driven by server) ---
 var serverState = {

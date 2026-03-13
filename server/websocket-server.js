@@ -323,9 +323,87 @@ if (startupLibrary) {
 const http = require('http');
 const WebSocketServer = require('websocket').server;
 
-const httpServer = http.createServer();
-httpServer.listen(config.port || 9898);
-console.log('WebSocket server listening on port ' + (config.port || 9898));
+// HTTP server to serve static files (test harness, client app, etc.)
+const httpServer = http.createServer(function(request, response) {
+    var filePath = request.url;
+    
+    // Default route serves the client
+    if (filePath === '/' || filePath === '') {
+        filePath = '/client.html';
+    }
+    
+    // Route requests to appropriate directories
+    var fullPath;
+    if (filePath.startsWith('/client') || filePath === '/client.html') {
+        fullPath = path.join(__dirname, '..', 'client', path.basename(filePath));
+    } else if (filePath.startsWith('/test_harness') || filePath === '/test_harness.html') {
+        fullPath = path.join(__dirname, '..', 'public_site', path.basename(filePath));
+    } else {
+        // Serve from public_site by default
+        fullPath = path.join(__dirname, '..', 'public_site', path.basename(filePath));
+    }
+    
+    // Security: prevent directory traversal
+    var normalizedPath = path.normalize(fullPath);
+    var projectRoot = path.join(__dirname, '..');
+    if (!normalizedPath.startsWith(projectRoot)) {
+        response.writeHead(403, { 'Content-Type': 'text/plain' });
+        response.end('Forbidden');
+        return;
+    }
+    
+    // Determine MIME type
+    var ext = path.extname(fullPath).toLowerCase();
+    var mimeTypes = {
+        '.html': 'text/html',
+        '.css': 'text/css',
+        '.js': 'application/javascript',
+        '.json': 'application/json',
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.gif': 'image/gif',
+        '.svg': 'image/svg+xml',
+        '.ico': 'image/x-icon'
+    };
+    var contentType = mimeTypes[ext] || 'application/octet-stream';
+    
+    // Read and serve the file
+    fs.readFile(fullPath, function(error, content) {
+        if (error) {
+            if (error.code === 'ENOENT') {
+                response.writeHead(404, { 'Content-Type': 'text/plain' });
+                response.end('404 Not Found: ' + filePath);
+            } else {
+                response.writeHead(500, { 'Content-Type': 'text/plain' });
+                response.end('500 Internal Server Error: ' + error.code);
+            }
+        } else {
+            response.writeHead(200, { 'Content-Type': contentType });
+            response.end(content, 'utf-8');
+            console.log('Served: ' + filePath);
+        }
+    });
+});
+
+// Bind to all network interfaces (0.0.0.0) so other devices can connect
+var port = config.port || 9898;
+var host = '0.0.0.0';
+httpServer.listen(port, host);
+
+console.log('');
+console.log('🎤 Jakeraoke Server Running');
+console.log('=====================================');
+console.log('HTTP Server: http://' + host + ':' + port);
+console.log('WebSocket: ws://' + host + ':' + port);
+console.log('');
+console.log('Local access:');
+console.log('  http://localhost:' + port + '/');
+console.log('  http://localhost:' + port + '/test_harness.html');
+console.log('');
+console.log('Network access (use your MacBook\'s IP):');
+console.log('  http://YOUR-MACBOOK-IP:' + port + '/');
+console.log('');
 
 const wsServer = new WebSocketServer({
     httpServer: httpServer

@@ -343,7 +343,9 @@
 <script>
 
 // --- Config ---
-var WS_URL = 'ws://localhost:9898/';
+// Auto-detect WebSocket URL from current page location (works locally and over network)
+var WS_URL = 'ws://' + (window.location.host || 'localhost:9898') + '/';
+console.log('WebSocket URL: ' + WS_URL);
 
 // Color map: song {color} tag → CSS color
 var COLOR_MAP = {

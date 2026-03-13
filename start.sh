@@ -23,19 +23,24 @@ sleep 1
 
 # Verify it started
 if kill -0 "$SERVER_PID" 2>/dev/null; then
-    echo "✅ Server running on ws://localhost:9898 (PID $SERVER_PID)"
+    echo "✅ Server running (PID $SERVER_PID)"
 else
     echo "❌ Server failed to start"
     rm -f "$PID_FILE"
     exit 1
 fi
 
-# Open the clients in the browser
+# Wait a moment for HTTP server to be ready
+sleep 1
+
+# Open the clients via HTTP server (not local files)
 echo "🎤 Opening display client..."
-open "$SCRIPT_DIR/client/client.html"
+open "http://localhost:9898/"
 
 echo "🎛️  Opening test harness..."
-open "$SCRIPT_DIR/public_site/test_harness.html"
+open "http://localhost:9898/test_harness.html"
 
+echo ""
+echo "🌐 For network access, run: ./show_network_info.sh"
 echo ""
 echo "Ready! To stop: ./stop.sh"
