@@ -343,7 +343,9 @@
 
 // --- Configuration ---
 // Auto-detect WebSocket URL from current page location (works locally and over network)
-const WS_URL = 'ws://' + (window.location.host || 'localhost:9898') + '/';
+// Use wss:// (secure) if page loaded over https://, otherwise ws://
+var wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+const WS_URL = wsProtocol + '//' + (window.location.host || 'localhost:9898') + '/';
 console.log('WebSocket URL: ' + WS_URL);
 
 // --- State (driven by server) ---

@@ -1,6 +1,8 @@
 #!/bin/bash
 # Show network information for stage setup
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 echo ""
 echo "🎸 Jakeraoke Network Info"
 echo "========================================"
@@ -17,14 +19,28 @@ ifconfig | grep "inet " | grep -v 127.0.0.1 | while read -r line; do
 done
 
 echo ""
+# Check if SSL certificates exist
+CERT_FILE="$SCRIPT_DIR/server/ssl/cert.pem"
+KEY_FILE="$SCRIPT_DIR/server/ssl/key.pem"
+
+if [ -f "$CERT_FILE" ] && [ -f "$KEY_FILE" ]; then
+    PROTOCOL="https"
+    echo "🔒 HTTPS Enabled (SSL certificates found)"
+else
+    PROTOCOL="http"
+    echo "🌐 HTTP Only (no SSL certificates)"
+    echo "   Run ./generate_cert.sh to enable HTTPS"
+fi
+
+echo ""
 echo "🌐 Stage Access URLs:"
 echo ""
 
 # Show URLs for each IP
 ifconfig | grep "inet " | grep -v 127.0.0.1 | while read -r line; do
     ip=$(echo $line | awk '{print $2}')
-    echo "   Client:       http://$ip:9898/"
-    echo "   Test Harness: http://$ip:9898/test_harness.html"
+    echo "   Client:       $PROTOCOL://$ip:9898/"
+    echo "   Test Harness: $PROTOCOL://$ip:9898/test_harness.html"
     echo ""
 done
 

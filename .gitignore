@@ -19,3 +19,6 @@ alignment/staging/
 
 # Local configuration (machine-specific paths)
 server/config.local.json
+
+# SSL certificates (self-signed, machine-specific)
+server/ssl/

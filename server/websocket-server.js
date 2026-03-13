@@ -321,10 +321,34 @@ if (startupLibrary) {
 // ============================================================
 
 const http = require('http');
+const https = require('https');
 const WebSocketServer = require('websocket').server;
 
-// HTTP server to serve static files (test harness, client app, etc.)
-const httpServer = http.createServer(function(request, response) {
+// Check for SSL certificates
+var sslCertPath = path.join(__dirname, 'ssl', 'cert.pem');
+var sslKeyPath = path.join(__dirname, 'ssl', 'key.pem');
+var useHttps = fs.existsSync(sslCertPath) && fs.existsSync(sslKeyPath);
+var sslOptions = null;
+
+if (useHttps) {
+    try {
+        sslOptions = {
+            cert: fs.readFileSync(sslCertPath),
+            key: fs.readFileSync(sslKeyPath)
+        };
+        console.log('✅ SSL certificates found - HTTPS enabled');
+    } catch (err) {
+        console.log('⚠️  SSL certificate error:', err.message);
+        console.log('   Falling back to HTTP only');
+        useHttps = false;
+    }
+} else {
+    console.log('ℹ️  No SSL certificates found - HTTP only');
+    console.log('   Run ./generate_cert.sh to enable HTTPS');
+}
+
+// Request handler for both HTTP and HTTPS
+function handleRequest(request, response) {
     var filePath = request.url;
     
     // Default route serves the client
@@ -389,7 +413,12 @@ const httpServer = http.createServer(function(request, response) {
             console.log('Served: ' + filePath);
         }
     });
-});
+}
+
+// Create HTTP or HTTPS server
+var httpServer = useHttps
+    ? https.createServer(sslOptions, handleRequest)
+    : http.createServer(handleRequest);
 
 // Bind to all network interfaces (0.0.0.0) so other devices can connect
 var port = config.port || 9898;
@@ -399,15 +428,30 @@ httpServer.listen(port, host);
 console.log('');
 console.log('🎤 Jakeraoke Server Running');
 console.log('=====================================');
-console.log('HTTP Server: http://' + host + ':' + port);
-console.log('WebSocket: ws://' + host + ':' + port);
+if (useHttps) {
+    console.log('HTTPS Server: https://' + host + ':' + port);
+    console.log('WebSocket: wss://' + host + ':' + port + ' (secure)');
+} else {
+    console.log('HTTP Server: http://' + host + ':' + port);
+    console.log('WebSocket: ws://' + host + ':' + port);
+}
 console.log('');
 console.log('Local access:');
-console.log('  http://localhost:' + port + '/');
-console.log('  http://localhost:' + port + '/test_harness.html');
+if (useHttps) {
+    console.log('  https://localhost:' + port + '/');
+    console.log('  https://localhost:' + port + '/test_harness.html');
+} else {
+    console.log('  http://localhost:' + port + '/');
+    console.log('  http://localhost:' + port + '/test_harness.html');
+}
 console.log('');
 console.log('Network access (use your MacBook\'s IP):');
-console.log('  http://YOUR-MACBOOK-IP:' + port + '/');
+if (useHttps) {
+    console.log('  https://YOUR-MACBOOK-IP:' + port + '/');
+    console.log('  (Clients will need to accept certificate warning once)');
+} else {
+    console.log('  http://YOUR-MACBOOK-IP:' + port + '/');
+}
 console.log('');
 
 const wsServer = new WebSocketServer({
