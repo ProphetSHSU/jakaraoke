@@ -379,7 +379,12 @@ const httpServer = http.createServer(function(request, response) {
                 response.end('500 Internal Server Error: ' + error.code);
             }
         } else {
-            response.writeHead(200, { 'Content-Type': contentType });
+            // Add charset=utf-8 for text-based content to properly display emojis
+            var contentTypeWithCharset = contentType;
+            if (contentType.startsWith('text/') || contentType === 'application/javascript' || contentType === 'application/json') {
+                contentTypeWithCharset = contentType + '; charset=utf-8';
+            }
+            response.writeHead(200, { 'Content-Type': contentTypeWithCharset });
             response.end(content, 'utf-8');
             console.log('Served: ' + filePath);
         }
