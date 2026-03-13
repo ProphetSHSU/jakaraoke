@@ -16,3 +16,6 @@ node_modules/
 # Alignment output and staging
 alignment/output/
 alignment/staging/
+
+# Local configuration (machine-specific paths)
+server/config.local.json

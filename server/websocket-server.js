@@ -13,7 +13,36 @@ var chordpro = require("./chordpro-parser");
 // Configuration & Library Management
 // ============================================================
 
+// Load base config
 var config = JSON.parse(fs.readFileSync(path.join(__dirname, "config.json")).toString('utf-8'));
+
+// Try to load local overrides (machine-specific paths)
+var localConfigPath = path.join(__dirname, "config.local.json");
+if (fs.existsSync(localConfigPath)) {
+    console.log('Loading local config overrides from config.local.json');
+    var localConfig = JSON.parse(fs.readFileSync(localConfigPath).toString('utf-8'));
+    
+    // Deep merge libraries by name
+    if (localConfig.libraries) {
+        localConfig.libraries.forEach(function(localLib) {
+            var baseLib = config.libraries.find(function(l) { return l.name === localLib.name; });
+            if (baseLib && localLib.path) {
+                baseLib.path = localLib.path;
+                console.log('  Overriding path for "' + localLib.name + '": ' + localLib.path);
+            }
+        });
+    }
+    
+    // Merge other top-level settings (e.g., activeLibrary, activeSetlist, port)
+    Object.keys(localConfig).forEach(function(key) {
+        if (key !== 'libraries') {
+            config[key] = localConfig[key];
+        }
+    });
+} else {
+    console.log('No config.local.json found - using config.json only');
+    console.log('  (Create config.local.json to override library paths on this machine)');
+}
 
 var libraries = config.libraries || [];
 var activeLibrary = null;

@@ -1,0 +1,13 @@
+{
+  "comment": "Copy this file to config.local.json and update paths for your machine",
+  "libraries": [
+    {
+      "name": "WingPunch",
+      "path": "/path/to/your/Song_Repo/WingPunchDB"
+    },
+    {
+      "name": "SoloSet",
+      "path": "/path/to/your/Song_Repo/SoloSetDB"
+    }
+  ]
+}

@@ -3,11 +3,13 @@
   "libraries": [
     {
       "name": "WingPunch",
-      "path": "/Users/jawgner/source/Song_Repo/WingPunchDB"
+      "path": null,
+      "comment": "Path configured in config.local.json"
     },
     {
       "name": "SoloSet",
-      "path": "/Users/jawgner/source/Song_Repo/SoloSetDB"
+      "path": null,
+      "comment": "Path configured in config.local.json"
     },
     {
       "name": "Jakeraoke (PoC)",
