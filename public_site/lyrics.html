@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Lyrics</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0a0a;
+      --bg-header: #0e0e16;
+      --accent: #e94560;
+      --accent-song: var(--accent);
+      --chord-color: #e94560;
+      --text: #e8e8e8;
+      --text-dim: #5a5a72;
+      --text-mid: #a0a0b8;
+      --section-color: #d4a054;
+      --comment-color: #7a8ba8;
+      --ready-green: #4ecca3;
+      --warning: #ffd93d;
+      --font-lyrics: 'Helvetica Neue', 'SF Pro Display', 'Segoe UI', Arial, sans-serif;
+      --font-chords: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      --font-size-base: 22px;
+      --font-scale: 1.0;
+      --font-size-lyrics: calc(var(--font-size-base) * var(--font-scale));
+      --font-size-chords: calc(var(--font-size-lyrics) * 0.72);
+      --chord-line-height: 1.2em;
+    }
+
+    html, body {
+      height: 100%; width: 100%;
+      background: var(--bg); color: var(--text);
+      font-family: var(--font-lyrics);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+      overflow-x: hidden;
+      padding-top: 54px;
+      -webkit-user-select: none; user-select: none;
+    }
+
+    /* === HEADER BAR (slim) === */
+    .header {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 20;
+      background: var(--bg-header);
+      border-bottom: 2px solid var(--accent-song);
+      padding: 6px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-height: 42px;
+      transition: border-color 0.3s;
+    }
+
+    .hdr-transport {
+      display: flex; gap: 8px; align-items: center; flex-shrink: 0;
+    }
+    .hdr-btn {
+      touch-action: manipulation;
+      width: 32px; height: 32px;
+      border-radius: 50%; border: 1.5px solid var(--text-dim);
+      background: transparent; color: var(--text-mid);
+      font-size: 14px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; transition: all 0.12s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .hdr-btn:active { transform: scale(0.9); }
+    .hdr-btn.play { border-color: var(--ready-green); color: var(--ready-green); }
+    .hdr-btn.play.playing { background: var(--ready-green); color: var(--bg); }
+    .hdr-btn.stop { border-color: var(--accent); color: var(--accent); }
+
+    .hdr-spacer { flex: 1; }
+
+    .hdr-next {
+      font-size: 13px; color: var(--text-dim);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      max-width: 40%;
+    }
+    .hdr-goto {
+      flex: 1;
+      max-width: 50%;
+      padding: 4px 8px;
+      border-radius: 6px;
+      border: 1px solid #2a2a3a;
+      background: #14141f;
+      color: var(--text-mid);
+      font-size: 13px;
+      font-family: var(--font-lyrics);
+      outline: none;
+      cursor: pointer;
+      text-overflow: ellipsis;
+    }
+    .hdr-goto:focus { border-color: var(--accent); }
+    .hdr-goto option { background: #14141f; color: var(--text); }
+    .hdr-goto option.divider { color: #d4a054; font-weight: 700; }
+
+    .hdr-next .label { color: var(--text-dim); margin-right: 4px; }
+    .hdr-next .name { color: var(--text-mid); font-weight: 600; }
+    .hdr-next.divider .name { color: var(--warning); }
+
+    .hdr-size {
+      display: flex; gap: 4px; align-items: center; flex-shrink: 0;
+    }
+    .size-btn {
+      width: 26px; height: 26px;
+      border-radius: 4px; border: 1px solid #2a2a3a;
+      background: #14141f; color: var(--text-mid);
+      font-size: 16px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+    }
+    .size-btn:active { background: #2a2a3a; }
+
+    /* === READY BADGE (floating, bottom-right) === */
+    .ready-badge {
+      position: fixed;
+      bottom: 12px; right: 12px;
+      z-index: 30;
+      display: flex; align-items: center; gap: 6px;
+      background: #14141fdd;
+      border: 1px solid #2a2a3a;
+      border-radius: 20px;
+      padding: 6px 14px;
+      backdrop-filter: blur(8px);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .ready-badge.is-ready {
+      border-color: var(--ready-green);
+      background: #0a2a1add;
+    }
+    .ready-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: #3a3a50;
+      transition: background 0.2s;
+    }
+    .ready-badge.is-ready .ready-dot { background: var(--ready-green); }
+    .ready-label {
+      font-size: 12px; font-weight: 600;
+      color: var(--text-dim);
+      text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .ready-badge.is-ready .ready-label { color: var(--ready-green); }
+    .ready-count {
+      font-size: 11px; color: var(--text-dim);
+      background: #1a1a2a; border-radius: 10px;
+      padding: 1px 6px;
+    }
+
+    /* Ready expanded panel */
+    .ready-panel {
+      position: fixed;
+      bottom: 52px; right: 12px;
+      z-index: 29;
+      background: #14141fee;
+      border: 1px solid #2a2a3a;
+      border-radius: 12px;
+      padding: 10px 14px;
+      backdrop-filter: blur(8px);
+      display: none;
+      min-width: 120px;
+    }
+    .ready-panel.show { display: block; }
+    .ready-panel-item {
+      display: flex; align-items: center; gap: 6px;
+      padding: 3px 0;
+      font-size: 13px; color: var(--text-dim);
+    }
+    .ready-panel-item.ready { color: var(--text-mid); }
+    .ready-panel-item .rp-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: #3a3a50;
+    }
+    .ready-panel-item.ready .rp-dot { background: var(--ready-green); }
+
+    /* === SONG CONTENT === */
+    .song-content {
+      padding: 14px 20px 80px 20px;
+      max-width: 900px;
+    }
+
+    .waiting {
+      text-align: center; padding: 120px 20px; color: #444;
+    }
+    .waiting .icon { font-size: 48px; margin-bottom: 12px; }
+    .waiting .msg { font-size: 20px; }
+    .waiting .sub { font-size: 14px; margin-top: 8px; color: #333; }
+
+    /* Section labels */
+    .section-label {
+      color: var(--section-color);
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-top: 14px;
+      margin-bottom: 2px;
+      padding-bottom: 1px;
+      border-bottom: 1px solid #3a2a15;
+    }
+
+    /* Comments */
+    .comment {
+      color: var(--comment-color);
+      font-style: italic;
+      font-size: calc(var(--font-size-lyrics) * 0.85);
+      margin: 2px 0;
+      padding-left: 8px;
+      border-left: 2px solid #3a4a5a;
+    }
+
+    /* Title block */
+    .song-title-block {
+      text-align: center;
+      padding: 16px 0 20px;
+      border-bottom: 1px solid #1a1a2a;
+      margin-bottom: 14px;
+    }
+    .song-title {
+      font-size: calc(var(--font-size-lyrics) * 1.4);
+      font-weight: 800;
+      color: var(--text);
+    }
+    .song-artist {
+      font-size: calc(var(--font-size-lyrics) * 0.85);
+      color: var(--text-mid);
+      margin-top: 4px;
+      font-style: italic;
+    }
+
+    .spacer { height: 8px; }
+
+    /* === SONG LINES — the new chord rendering === */
+    /*
+     * Strategy: all parts are display:inline for natural word-wrap.
+     * Chords float above via ::before with position:absolute.
+     * No inline-block. No min-width. Wrapping happens at spaces.
+     * When chord is wider than its text, we pad with thin spaces
+     * in the renderer to prevent chord-over-chord overlap.
+     */
+    .song-line {
+      font-size: var(--font-size-lyrics);
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      margin-bottom: 2px;
+    }
+
+    .song-line.has-chords {
+      padding-top: var(--chord-line-height);
+      line-height: 1.6;
+    }
+
+    .song-line.chords-only {
+      padding-top: 0;
+      line-height: 1.3;
+      margin-bottom: 0;
+    }
+
+    .part {
+      position: relative;
+      /* display: inline — default, wraps naturally */
+    }
+
+    .part[data-chord]::before {
+      content: attr(data-chord);
+      position: absolute;
+      left: 0;
+      top: calc(-1 * var(--chord-line-height));
+      font-family: var(--font-chords);
+      font-size: var(--font-size-chords);
+      font-weight: 700;
+      color: var(--chord-color);
+      white-space: nowrap;
+      pointer-events: none;
+    }
+
+    /* Chords-only lines: chords are the content, inline flow */
+    .song-line.chords-only .part[data-chord]::before {
+      position: relative;
+      top: 0;
+      margin-right: 0.5em;
+    }
+
+    /* === SCROLL TARGET LINE === */
+    .scroll-target-line {
+      position: fixed; left: 0; right: 0;
+      height: 2px;
+      background: rgba(78, 204, 163, 0.25);
+      pointer-events: none; z-index: 5;
+      display: none;
+    }
+    .scroll-target-line.active { display: block; }
+
+    /* === CONNECTION === */
+    .disconnected-banner {
+      position: fixed; top: 0; left: 0; right: 0;
+      background: var(--accent); color: white;
+      text-align: center; padding: 4px;
+      font-size: 12px; font-weight: 600;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      transform: translateY(-100%);
+      transition: transform 0.2s;
+      z-index: 100;
+    }
+    .disconnected-banner.show { transform: translateY(0); }
+  </style>
+</head>
+<body>
+
+  <div class="disconnected-banner" id="disconnectedBanner">⚠ Reconnecting…</div>
+
+  <!-- Slim header: transport + up next + font size -->
+  <div class="header" id="header">
+    <div class="hdr-transport">
+      <button class="hdr-btn" id="btnPrev" title="Previous" style="font-size:12px;">⏮</button>
+      <button class="hdr-btn stop" id="btnStop" title="Stop">■</button>
+      <button class="hdr-btn play" id="btnPlay" title="Play">▶</button>
+      <button class="hdr-btn" id="btnNext" title="Next" style="font-size:12px;">⏭</button>
+    </div>
+    <div class="hdr-spacer"></div>
+    <select class="hdr-goto" id="gotoSelect"><option value="">— jump to song —</option></select>
+    <div class="hdr-spacer"></div>
+    <!-- hdr-next hidden, replaced by goto dropdown -->
+    <div class="hdr-next" id="hdrNext" style="display:none;">
+      <span class="label">NEXT:</span>
+      <span class="name" id="nextName">—</span>
+    </div>
+    <div class="hdr-size">
+      <button class="size-btn" id="sizeDown" title="Smaller text">−</button>
+      <button class="size-btn" id="sizeUp" title="Larger text">+</button>
+    </div>
+  </div>
+
+  <!-- Scroll target line -->
+  <div class="scroll-target-line" id="scrollTargetLine"></div>
+
+  <!-- Song content -->
+  <div class="song-content" id="songContent">
+    <div class="waiting">
+      <div class="icon">🎸</div>
+      <div class="msg">Waiting for song...</div>
+      <div class="sub">Navigate to a song with pedal or controls</div>
+    </div>
+  </div>
+
+  <!-- Ready badge (floating) -->
+  <div class="ready-badge" id="readyBadge">
+    <div class="ready-dot"></div>
+    <span class="ready-label" id="readyLabel">Ready</span>
+    <span class="ready-count" id="readyCount" style="display:none">0/0</span>
+  </div>
+
+  <!-- Ready expanded panel -->
+  <div class="ready-panel" id="readyPanel"></div>
+
+<script>
+// ===========================================================================
+// Lyrics View — scrolling chord sheet with slim nav chrome
+// ===========================================================================
+
+// ---------- Config ----------
+var WS_URL = (window.location.protocol === 'https:' ? 'wss:' : 'ws:') +
+             '//' + (window.location.host || 'localhost:9898') + '/';
+
+var COLOR_MAP = {
+  'G': '#4ecca3', 'P': '#c77dff', 'Y': '#ffd93d',
+};
+
+var DOWNBEAT_NOTE = 37;
+
+// ---------- State ----------
+var playerName = localStorage.getItem('lyrics_player_name') || '';
+var isReady = false;
+var serverState = null;
+var transportState = 'stopped';
+var currentSongMeta = null;
+var fontScale = parseFloat(localStorage.getItem('lyrics_font_scale') || '1.0');
+
+// ---------- DOM ----------
+var el = {
+  disconnectedBanner: document.getElementById('disconnectedBanner'),
+  header: document.getElementById('header'),
+  btnPrev: document.getElementById("btnPrev"),
+  btnNext: document.getElementById("btnNext"),
+  btnStop: document.getElementById('btnStop'),
+  btnPlay: document.getElementById('btnPlay'),
+  hdrNext: document.getElementById('hdrNext'),
+  nextName: document.getElementById('nextName'),
+  songContent: document.getElementById('songContent'),
+  scrollTargetLine: document.getElementById('scrollTargetLine'),
+  readyBadge: document.getElementById('readyBadge'),
+  readyLabel: document.getElementById('readyLabel'),
+  readyCount: document.getElementById('readyCount'),
+  readyPanel: document.getElementById('readyPanel'),
+  sizeUp: document.getElementById('sizeUp'),
+  sizeDown: document.getElementById('sizeDown')
+};
+
+// ---------- Font scaling ----------
+applyFontScale();
+
+el.sizeUp.addEventListener('click', function() {
+  fontScale = Math.min(2.0, fontScale + 0.1);
+  localStorage.setItem('lyrics_font_scale', fontScale.toFixed(2));
+  applyFontScale();
+});
+el.sizeDown.addEventListener('click', function() {
+  fontScale = Math.max(0.5, fontScale - 0.1);
+  localStorage.setItem('lyrics_font_scale', fontScale.toFixed(2));
+  applyFontScale();
+});
+
+function applyFontScale() {
+  document.documentElement.style.setProperty('--font-scale', fontScale.toFixed(2));
+}
+
+// ---------- Registration (auto-prompt if no name) ----------
+if (!playerName) {
+  playerName = prompt('Enter your name (for ready-check):') || 'Anonymous';
+  localStorage.setItem('lyrics_player_name', playerName);
+}
+
+// ---------- Ready badge ----------
+el.readyBadge.addEventListener('click', function(e) {
+  e.stopPropagation();
+  isReady = !isReady;
+  el.readyBadge.classList.toggle('is-ready', isReady);
+  el.readyLabel.textContent = isReady ? '✓ Ready' : 'Ready';
+  wsSend({ type: 'ready', ready: isReady });
+});
+
+// Long-press to expand panel
+var readyPanelVisible = false;
+el.readyBadge.addEventListener('dblclick', function(e) {
+  e.stopPropagation();
+  readyPanelVisible = !readyPanelVisible;
+  el.readyPanel.classList.toggle('show', readyPanelVisible);
+});
+
+// ---------- Transport controls ----------
+el.btnPlay.addEventListener('click', function() { wsSend({ type: 'command', action: 'play' }); });
+el.btnNext.addEventListener("click", function() { wsSend({ type: "command", action: "next" }); });
+// Goto dropdown
+el.gotoSelect = document.getElementById("gotoSelect");
+el.gotoSelect.addEventListener("change", function() {
+  var idx = parseInt(this.value, 10);
+  if (!isNaN(idx)) {
+    wsSend({ type: "command", action: "goto", index: idx });
+  }
+  this.value = ""; // reset to placeholder
+});
+
+// Populate goto dropdown from server state
+function populateGotoDropdown(setList) {
+  if (!el.gotoSelect || !setList) return;
+  var html = '<option value="">\u2014 jump to song \u2014</option>';
+  for (var i = 0; i < setList.length; i++) {
+    var item = setList[i];
+    if (typeof item === "object" && item.type === "divider") {
+      html += '<option disabled class="divider">' + item.name + '</option>';
+    } else {
+      var name = String(item).replace(/.txt$/i, "").replace(/^.*? - /, "");
+      html += '<option value="' + i + '">' + name + '</option>';
+    }
+  }
+  el.gotoSelect.innerHTML = html;
+}
+el.btnPrev.addEventListener("click", function() { wsSend({ type: "command", action: "prev" }); });
+el.btnStop.addEventListener('click', function() { wsSend({ type: 'command', action: 'stop' }); });
+
+// ---------- Wake Lock (prevent screen dimming) ----------
+(function() {
+  var wakeLock = null;
+  function requestWakeLock() {
+    if ("wakeLock" in navigator) {
+      navigator.wakeLock.request("screen").then(function(lock) {
+        wakeLock = lock;
+        wakeLock.addEventListener("release", function() { wakeLock = null; });
+      }).catch(function() {});
+    }
+  }
+  requestWakeLock();
+  document.addEventListener("visibilitychange", function() {
+    if (document.visibilityState === "visible") requestWakeLock();
+  });
+})();
+
+// ---------- Swipe Navigation ----------
+(function() {
+  var startX = 0, startY = 0;
+  var minDist = 50; // minimum horizontal swipe distance
+  var maxVertical = 80; // ignore if vertical movement exceeds this
+
+  document.addEventListener("touchstart", function(e) {
+    startX = e.changedTouches[0].screenX;
+    startY = e.changedTouches[0].screenY;
+  }, { passive: true });
+
+  document.addEventListener("touchend", function(e) {
+    var dx = e.changedTouches[0].screenX - startX;
+    var dy = e.changedTouches[0].screenY - startY;
+    if (Math.abs(dy) > maxVertical) return; // was a vertical scroll
+    if (Math.abs(dx) < minDist) return; // too short
+    if (dx < 0) {
+      wsSend({ type: "command", action: "next" }); // swipe left = next
+    } else {
+      wsSend({ type: "command", action: "prev" }); // swipe right = prev
+    }
+  }, { passive: true });
+})();
+
+// ---------- WebSocket ----------
+var ws;
+function connectWebSocket() {
+  ws = new WebSocket(WS_URL);
+  ws.onopen = function() {
+    el.disconnectedBanner.classList.remove('show');
+    wsSend({ type: 'register', name: playerName });
+  };
+  ws.onclose = function() {
+    el.disconnectedBanner.classList.add('show');
+    setTimeout(connectWebSocket, 2000);
+  };
+  ws.onerror = function() {};
+  ws.onmessage = function(e) {
+    try {
+      var msg = JSON.parse(e.data);
+      if (msg.command === 0 && msg.song) { handleSong(msg); return; }
+      if (msg.command === 0 && msg.setBreak) { handleSetBreak(msg.setNumber); return; }
+      if (msg.command === 144) { /* beat pulse — could flash header border */ return; }
+      if (msg.type === 'transport') { handleTransport(msg); return; }
+      if (msg.type === 'state') { serverState = msg; renderNext(); resetReady(); populateGotoDropdown(msg.setList); return; }
+      if (msg.type === 'readyState') { renderReadyState(msg.players || []); return; }
+    } catch(err) { console.error('WS:', err); }
+  };
+}
+connectWebSocket();
+
+function wsSend(obj) {
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+}
+
+// ---------- Song rendering ----------
+function handleSong(msg) {
+  var song = msg.song;
+  currentSongMeta = song.metadata || {};
+
+  // Accent color from song
+  var c = COLOR_MAP[currentSongMeta.color] || '#e94560';
+  document.documentElement.style.setProperty('--accent-song', c);
+  document.documentElement.style.setProperty('--chord-color', c);
+  el.header.style.borderBottomColor = c;
+
+  renderSongContent(song);
+  renderNext();
+
+  // Reset scroll
+  stopScrollLoop();
+  showTargetLine(false);
+  window.scrollTo(0, 0);
+  requestAnimationFrame(function() { buildAnchors(song); });
+}
+
+function handleSetBreak(setNumber) {
+  currentSongMeta = null;
+  el.songContent.innerHTML =
+    '<div style="display:flex;align-items:center;justify-content:center;min-height:60vh;flex-direction:column;gap:16px;">' +
+    '<div style="font-size:42px;font-weight:700;color:var(--warning);">═══ SET BREAK ═══</div>' +
+    '<div style="font-size:20px;color:var(--text-dim);">Set ' + setNumber + '</div></div>';
+  stopScrollLoop();
+  showTargetLine(false);
+  window.scrollTo(0, 0);
+  renderNext();
+}
+
+function renderSongContent(song) {
+  var sections = song.sections || [];
+  var meta = song.metadata || {};
+  var html = '';
+
+  // Title block (centered)
+  var title = meta.title || '';
+  var artist = meta.artist || '';
+  if (title) {
+    html += '<div class="song-title-block">';
+    html += '<div class="song-title">' + esc(title) + '</div>';
+    if (artist) html += '<div class="song-artist">by: ' + esc(artist) + '</div>';
+    html += '</div>';
+  }
+
+  for (var i = 0; i < sections.length; i++) {
+    var s = sections[i];
+    switch (s.type) {
+      case 'empty':
+        html += '<div class="spacer" data-si="' + i + '"></div>';
+        break;
+      case 'section':
+        html += '<div class="section-label" data-si="' + i + '">' + esc(s.label) + '</div>';
+        break;
+      case 'comment':
+        html += '<div class="comment" data-si="' + i + '">' + esc(s.text) + '</div>';
+        break;
+      case 'line':
+        html += renderLine(s, i);
+        break;
+    }
+  }
+
+  el.songContent.innerHTML = html;
+}
+
+/**
+ * Render a chord+lyric line.
+ * All parts are inline spans. Chords float above via ::before.
+ * When a chord is wider than its underlying text, we pad with
+ * thin spaces to prevent overlap with the next chord.
+ */
+function renderLine(line, si) {
+  var parts = line.parts;
+  var hasChords = parts.some(function(p) { return p.chord; });
+  var isChordOnly = line.chordsOnly;
+  var cls = 'song-line' + (isChordOnly ? ' chords-only' : '') + (hasChords ? ' has-chords' : '');
+  var html = '<div class="' + cls + '" data-si="' + si + '">';
+
+  for (var i = 0; i < parts.length; i++) {
+    var p = parts[i];
+    var text = p.text || '';
+    var chord = p.chord || '';
+    var chordAttr = chord ? ' data-chord="' + esc(chord) + '"' : '';
+
+    // Pad short text under wide chords to prevent overlap
+    var padded = text;
+    if (chord && !isChordOnly) {
+      var textLen = text.replace(/\s+$/, '').length; // visible char count
+      var chordLen = chord.length;
+      if (chordLen > textLen + 1) {
+        // Add thin non-breaking spaces after visible text
+        var needed = chordLen - textLen;
+        // Use regular spaces (breakable) so wrapping can still happen here
+        padded = text + ' '.repeat(needed);
+      }
+    }
+
+    // Empty text with chord: pad enough to prevent overlap with adjacent chords
+    if (chord && padded.trim().length === 0) {
+      padded = '\u00A0'.repeat(chord.length + 2);
+    }
+
+    html += '<span class="part"' + chordAttr + '>' + esc(padded) + '</span>';
+  }
+
+  html += '</div>';
+  return html;
+}
+
+// ---------- Next song display ----------
+function renderNext() {
+  if (!serverState) { el.nextName.textContent = '—'; return; }
+  var list = serverState.setList || [];
+  var sp = serverState.songPointer;
+  var nextItem = null;
+
+  for (var i = sp + 1; i < list.length; i++) {
+    var item = list[i];
+    if (typeof item === 'string') { nextItem = { kind: 'song', value: item }; break; }
+    if (typeof item === 'object' && item.type === 'divider') { nextItem = { kind: 'divider', setNumber: item.setNumber }; break; }
+  }
+
+  el.hdrNext.classList.remove('divider');
+  if (!nextItem) {
+    el.nextName.textContent = '— END —';
+  } else if (nextItem.kind === 'divider') {
+    el.nextName.textContent = '— SET BREAK —';
+    el.hdrNext.classList.add('divider');
+  } else {
+    el.nextName.textContent = prettify(nextItem.value);
+  }
+}
+
+// ---------- Transport ----------
+function handleTransport(msg) {
+  transportState = msg.state || 'stopped';
+  el.btnPlay.classList.toggle('playing', transportState === 'playing');
+  el.btnPlay.textContent = transportState === 'playing' ? '⏸' : '▶';
+
+  // Scroll engine
+  if (transportState === 'playing') {
+    scrollState.elapsedOffset = msg.elapsed || 0;
+    scrollState.playStartedAt = performance.now() - (scrollState.elapsedOffset * 1000);
+    startScrollLoop();
+    showTargetLine(true);
+  } else if (transportState === 'paused') {
+    scrollState.elapsedOffset = msg.elapsed || 0;
+    stopScrollLoop();
+  } else {
+    scrollState.elapsedOffset = 0;
+    scrollState.playStartedAt = null;
+    stopScrollLoop();
+    showTargetLine(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+}
+
+// ---------- Ready state ----------
+function resetReady() {
+  // Reset on song change only (not stop/play)
+  isReady = false;
+  el.readyBadge.classList.remove('is-ready');
+  el.readyLabel.textContent = 'Ready';
+}
+
+function renderReadyState(players) {
+  var readyCount = 0;
+  var total = players.length;
+  var panelHtml = '';
+
+  players.forEach(function(p) {
+    if (p.ready) readyCount++;
+    var cls = 'ready-panel-item' + (p.ready ? ' ready' : '');
+    panelHtml += '<div class="' + cls + '"><span class="rp-dot"></span>' + esc(p.name) + '</div>';
+  });
+
+  el.readyCount.style.display = total > 0 ? 'inline' : 'none';
+  el.readyCount.textContent = readyCount + '/' + total;
+  el.readyPanel.innerHTML = panelHtml;
+}
+
+// ---------- Scroll engine (from client.html, proven) ----------
+var scrollState = {
+  anchors: [],
+  transportState: 'stopped',
+  playStartedAt: null,
+  elapsedOffset: 0,
+  songDuration: 0,
+  tempo: 120,
+  bpb: 4,
+  rafId: null,
+  targetRatio: 0.33
+};
+
+function buildAnchors(song) {
+  var sections = song.sections || [];
+  var meta = song.metadata || {};
+  var duration = meta.durationSeconds || 0;
+  var tempo = meta.tempo || 120;
+  var bpb = 4;
+
+  scrollState.songDuration = duration;
+  scrollState.tempo = tempo;
+  scrollState.bpb = bpb;
+
+  var anchors = [];
+  var content = el.songContent;
+
+  for (var i = 0; i < sections.length; i++) {
+    var s = sections[i];
+    if (s.type === 'bpb') { bpb = s.value || 4; scrollState.bpb = bpb; continue; }
+    if (s.type === 'timing') {
+      var py = findNextRendered(sections, i, content);
+      if (py !== null && s.seconds !== null) anchors.push({ time: s.seconds, pixelY: py });
+      continue;
+    }
+    if (s.type === 'bar') {
+      var barTime = (s.bar - 1) * bpb * (60 / tempo);
+      var py = findNextRendered(sections, i, content);
+      if (py !== null) anchors.push({ time: barTime, pixelY: py });
+      continue;
+    }
+  }
+
+  anchors.unshift({ time: 0, pixelY: 0 });
+  if (duration > 0) {
+    var endY = content.scrollHeight - window.innerHeight * scrollState.targetRatio;
+    anchors.push({ time: duration, pixelY: Math.max(0, endY) });
+  }
+
+  anchors.sort(function(a, b) { return a.time - b.time; });
+  // Deduplicate
+  var deduped = [];
+  for (var i = 0; i < anchors.length; i++) {
+    if (i < anchors.length - 1 && anchors[i].time === anchors[i + 1].time) continue;
+    deduped.push(anchors[i]);
+  }
+  scrollState.anchors = deduped;
+}
+
+function findNextRendered(sections, fromIdx, content) {
+  for (var j = fromIdx + 1; j < sections.length; j++) {
+    var node = content.querySelector('[data-si="' + j + '"]');
+    if (node) return node.offsetTop - content.offsetTop;
+  }
+  return content.scrollHeight;
+}
+
+function getElapsed() {
+  if (scrollState.playStartedAt !== null && transportState === 'playing') {
+    return (performance.now() - scrollState.playStartedAt) / 1000;
+  }
+  return scrollState.elapsedOffset;
+}
+
+function interpolateScroll(t) {
+  var a = scrollState.anchors;
+  if (a.length === 0) return 0;
+  if (t <= a[0].time) return a[0].pixelY;
+  if (t >= a[a.length - 1].time) return a[a.length - 1].pixelY;
+  for (var i = 0; i < a.length - 1; i++) {
+    if (t >= a[i].time && t < a[i + 1].time) {
+      var frac = (t - a[i].time) / (a[i + 1].time - a[i].time);
+      return a[i].pixelY + frac * (a[i + 1].pixelY - a[i].pixelY);
+    }
+  }
+  return a[a.length - 1].pixelY;
+}
+
+function scrollTick() {
+  if (transportState !== 'playing') return;
+  var elapsed = getElapsed();
+  var targetY = interpolateScroll(elapsed);
+  var scrollY = Math.max(0, targetY - window.innerHeight * scrollState.targetRatio);
+  window.scrollTo(0, scrollY);
+  if (elapsed < scrollState.songDuration || scrollState.songDuration === 0) {
+    scrollState.rafId = requestAnimationFrame(scrollTick);
+  }
+}
+
+function startScrollLoop() { stopScrollLoop(); scrollState.rafId = requestAnimationFrame(scrollTick); }
+function stopScrollLoop() { if (scrollState.rafId) { cancelAnimationFrame(scrollState.rafId); scrollState.rafId = null; } }
+function showTargetLine(vis) {
+  el.scrollTargetLine.classList.toggle('active', vis);
+  if (vis) el.scrollTargetLine.style.top = (window.innerHeight * scrollState.targetRatio) + 'px';
+}
+
+// ---------- Utilities ----------
+function prettify(name) {
+  if (!name) return '—';
+  return String(name).replace(/\.txt$/i, '').replace(/_/g, ' ');
+}
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Wake lock
+if ('wakeLock' in navigator) {
+  (async function() { try { await navigator.wakeLock.request('screen'); } catch(e) {} })();
+}
+
+// Double-tap fullscreen
+document.body.addEventListener('dblclick', function() {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
+});
+
+</script>
+</body>
+</html>

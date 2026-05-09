@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Navigator</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0a0f;
+      --bg-card: #14141f;
+      --bg-strip: #0e0e16;
+      --accent: #4ecca3;
+      --accent-dim: #2a7a5a;
+      --warning: #ffd93d;
+      --danger: #e94560;
+      --text: #ffffff;
+      --text-mid: #a8a8c0;
+      --text-dim: #5a5a72;
+      --ready-green: #4ecca3;
+      --ready-pending: #3a3a50;
+      --font: 'SF Pro Display', 'Helvetica Neue', 'Segoe UI', Arial, sans-serif;
+    }
+
+    html, body {
+      height: 100%; width: 100%; overflow: hidden;
+      background: var(--bg); color: var(--text);
+      font-family: var(--font);
+      -webkit-font-smoothing: antialiased;
+      -webkit-user-select: none; user-select: none;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* === TOP BAR === */
+    .top-bar {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      padding: 10px 16px;
+      gap: 10px;
+      background: var(--bg-strip);
+      border-bottom: 1px solid #1e1e2e;
+      min-height: 44px;
+    }
+    .status-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: var(--danger);
+      transition: background 0.2s;
+    }
+    .status-dot.connected { background: var(--accent); }
+    .player-name {
+      font-size: 13px; font-weight: 600;
+      color: var(--text-mid);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .setlist-label {
+      flex: 1; text-align: right;
+      font-size: 12px; color: var(--text-dim);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+
+    /* === SONG STACK (prev / now / next) === */
+    .song-stack {
+      display: none;
+      flex: 1 1 auto;
+      flex-direction: column;
+      justify-content: center;
+      padding: 20px 16px;
+      gap: 12px;
+      min-height: 0;
+    }
+
+    .song-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      border-radius: 12px;
+      transition: background 0.15s, transform 0.15s;
+    }
+    .song-row.prev, .song-row.next {
+      background: var(--bg-card);
+      opacity: 0.7;
+    }
+    .song-row.current {
+      background: linear-gradient(135deg, #1a2a2a 0%, #14141f 100%);
+      border: 2px solid var(--accent);
+      opacity: 1;
+      transform: scale(1.02);
+    }
+    .song-row.divider .song-name {
+      color: var(--warning);
+      font-style: italic;
+    }
+
+    .song-glyph {
+      flex: 0 0 auto;
+      font-size: 18px;
+      color: var(--text-dim);
+      width: 28px; text-align: center;
+    }
+    .song-row.current .song-glyph { color: var(--accent); font-size: 22px; }
+
+    .song-name {
+      flex: 1;
+      font-size: clamp(18px, 5vw, 32px);
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--text-mid);
+    }
+    .song-row.current .song-name {
+      color: var(--text);
+      font-size: clamp(24px, 7vw, 44px);
+      font-weight: 800;
+    }
+
+    .song-meta {
+      flex: 0 0 auto;
+      font-size: 12px;
+      color: var(--text-dim);
+      text-align: right;
+    }
+
+    /* === TRANSPORT + CONTROLS === */
+    .controls {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      padding: 16px;
+      background: var(--bg-strip);
+      border-top: 1px solid #1e1e2e;
+    }
+
+    .ctrl-btn {
+      touch-action: manipulation;
+      width: 64px; height: 64px;
+      border-radius: 50%;
+      border: 2px solid var(--text-dim);
+      background: transparent;
+      color: var(--text-mid);
+      font-size: 24px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      transition: all 0.15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .ctrl-btn:active { transform: scale(0.92); }
+    .ctrl-btn.play {
+      width: 80px; height: 80px;
+      border-color: var(--accent);
+      color: var(--accent);
+      font-size: 32px;
+    }
+    .ctrl-btn.play.playing {
+      background: var(--accent);
+      color: var(--bg);
+    }
+    .ctrl-btn.stop { border-color: var(--danger); color: var(--danger); }
+
+    /* === READY CHECK === */
+    .ready-bar {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      background: var(--bg-card);
+      border-top: 1px solid #1e1e2e;
+    }
+    .ready-btn {
+      padding: 8px 20px;
+      border-radius: 20px;
+      border: 2px solid var(--ready-pending);
+      background: transparent;
+      color: var(--text-mid);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .ready-btn.is-ready {
+      border-color: var(--ready-green);
+      background: var(--ready-green);
+      color: var(--bg);
+    }
+    .ready-players {
+      flex: 1;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .player-pip {
+      display: flex; align-items: center; gap: 4px;
+      font-size: 12px; color: var(--text-dim);
+    }
+    .player-pip .pip-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--ready-pending);
+      transition: background 0.2s;
+    }
+    .player-pip.ready .pip-dot { background: var(--ready-green); }
+    .player-pip.ready { color: var(--text-mid); }
+
+    /* === REGISTRATION MODAL === */
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.9);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 1000;
+    }
+    .modal-overlay.hidden { display: none; }
+    .modal-box {
+      background: var(--bg-card);
+      border: 1px solid #2e2e3e;
+      border-radius: 16px;
+      padding: 32px;
+      text-align: center;
+      max-width: 320px; width: 90%;
+    }
+    .modal-box h2 { margin-bottom: 16px; font-size: 20px; }
+    .modal-box input {
+      width: 100%; padding: 12px 16px;
+      border-radius: 8px; border: 1px solid #3e3e4e;
+      background: var(--bg); color: var(--text);
+      font-size: 18px; text-align: center;
+      outline: none;
+    }
+    .modal-box input:focus { border-color: var(--accent); }
+    .modal-box button {
+      margin-top: 16px; padding: 12px 32px;
+      border-radius: 8px; border: none;
+      background: var(--accent); color: var(--bg);
+      font-size: 16px; font-weight: 600;
+      cursor: pointer;
+    }
+
+    /* === DISCONNECTED === */
+    .disconnected-banner {
+      position: fixed; top: 0; left: 0; right: 0;
+      background: var(--danger);
+      color: white; text-align: center;
+      padding: 6px; font-size: 13px; font-weight: 600;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      transform: translateY(-100%);
+      transition: transform 0.2s;
+      z-index: 500;
+    }
+    .disconnected-banner.show { transform: translateY(0); }
+
+    /* === FULL SETLIST (scrollable) === */
+    .setlist-panel {
+      flex: 1 1 auto;
+      overflow-y: auto;
+      padding: 4px 12px;
+      border-top: 1px solid #1e1e2e;
+      min-height: 0;
+      -webkit-overflow-scrolling: touch;
+    }
+    .setlist-item {
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 15px;
+      color: var(--text-mid);
+      cursor: pointer;
+      transition: background 0.1s;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .setlist-item:active { background: #1e1e2e; }
+    .setlist-item.active {
+      background: linear-gradient(135deg, #1a2a2a 0%, #14141f 100%);
+      border: 1px solid var(--accent);
+      color: var(--text);
+      font-weight: 600;
+    }
+    .setlist-item.divider {
+      color: var(--warning);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      cursor: default;
+      padding: 8px 12px;
+      opacity: 0.8;
+    }
+    .setlist-item.unmatched {
+      color: var(--danger);
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="disconnected-banner" id="disconnectedBanner">⚠ Reconnecting…</div>
+
+  <!-- Registration modal -->
+  <div class="modal-overlay hidden" id="registerModal">
+    <div class="modal-box">
+      <h2>Who are you?</h2>
+      <input type="text" id="nameInput" placeholder="Your name" autocomplete="off" />
+      <button id="nameSubmit">Join</button>
+    </div>
+  </div>
+
+  <!-- Top bar -->
+  <div class="top-bar">
+    <div class="status-dot" id="statusDot"></div>
+    <div class="player-name" id="playerName">—</div>
+    <div class="setlist-label" id="setlistLabel">—</div>
+  </div>
+
+  <!-- Song stack -->
+  <div class="song-stack" id="songStack">
+    <div class="song-row prev" id="prevRow">
+      <div class="song-glyph">◀</div>
+      <div class="song-name" id="prevName">—</div>
+    </div>
+    <div class="song-row current" id="currentRow">
+      <div class="song-glyph">▶</div>
+      <div class="song-name" id="currentName">—</div>
+      <div class="song-meta" id="currentMeta"></div>
+    </div>
+    <div class="song-row next" id="nextRow">
+      <div class="song-glyph">▶▶</div>
+      <div class="song-name" id="nextName">—</div>
+    </div>
+  </div>
+
+
+  <!-- Full setlist (scrollable, tap to jump) -->
+  <div class="setlist-panel" id="setlistPanel"></div>
+
+  <!-- Transport controls -->
+  <div class="controls">
+    <button class="ctrl-btn" id="btnPrev" title="Previous">⏮</button>
+    <button class="ctrl-btn stop" id="btnStop" title="Stop">■</button>
+    <button class="ctrl-btn play" id="btnPlay" title="Play">▶</button>
+    <button class="ctrl-btn" id="btnNext" title="Next">⏭</button>
+  </div>
+
+  <!-- Ready check -->
+  <div class="ready-bar">
+    <button class="ready-btn" id="readyBtn">Ready</button>
+    <div class="ready-players" id="readyPlayers"></div>
+  </div>
+
+<script>
+// ===========================================================================
+// Navigator — glanceable setlist view with transport controls + ready check
+// ===========================================================================
+// Connects to jakaraoke WebSocket server. Displays prev/current/next song.
+// Sends commands (play, stop, next, prev) and ready-check messages.
+// ===========================================================================
+
+// ---------- Config ----------
+var WS_URL = (window.location.protocol === 'https:' ? 'wss:' : 'ws:') +
+             '//' + (window.location.host || 'localhost:9898') + '/';
+
+// ---------- State ----------
+var playerName = localStorage.getItem('navigator_player_name') || '';
+var isReady = false;
+var serverState = null;       // last state message
+var transportState = 'stopped';
+var currentSongMeta = null;
+
+// ---------- DOM ----------
+var el = {
+  statusDot: document.getElementById('statusDot'),
+  disconnectedBanner: document.getElementById('disconnectedBanner'),
+  registerModal: document.getElementById('registerModal'),
+  nameInput: document.getElementById('nameInput'),
+  nameSubmit: document.getElementById('nameSubmit'),
+  playerName: document.getElementById('playerName'),
+  setlistLabel: document.getElementById('setlistLabel'),
+  prevRow: document.getElementById('prevRow'),
+  prevName: document.getElementById('prevName'),
+  currentRow: document.getElementById('currentRow'),
+  currentName: document.getElementById('currentName'),
+  currentMeta: document.getElementById('currentMeta'),
+  nextRow: document.getElementById('nextRow'),
+  nextName: document.getElementById('nextName'),
+  btnPrev: document.getElementById('btnPrev'),
+  btnStop: document.getElementById('btnStop'),
+  btnPlay: document.getElementById('btnPlay'),
+  btnNext: document.getElementById('btnNext'),
+  readyBtn: document.getElementById('readyBtn'),
+  readyPlayers: document.getElementById('readyPlayers')
+};
+
+// ---------- Registration ----------
+function checkRegistration() {
+  if (!playerName) {
+    el.registerModal.classList.remove('hidden');
+    el.nameInput.focus();
+  } else {
+    el.registerModal.classList.add('hidden');
+    el.playerName.textContent = playerName;
+  }
+}
+
+el.nameSubmit.addEventListener('click', submitName);
+el.nameInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') submitName(); });
+
+function submitName() {
+  var name = el.nameInput.value.trim();
+  if (!name) return;
+  playerName = name;
+  localStorage.setItem('navigator_player_name', name);
+  el.registerModal.classList.add('hidden');
+  el.playerName.textContent = name;
+  sendRegister();
+}
+
+checkRegistration();
+
+// ---------- WebSocket ----------
+// Wake Lock (prevent screen dimming)
+(function() {
+  var wakeLock = null;
+  function requestWakeLock() {
+    if ("wakeLock" in navigator) {
+      navigator.wakeLock.request("screen").then(function(lock) {
+        wakeLock = lock;
+        wakeLock.addEventListener("release", function() { wakeLock = null; });
+      }).catch(function() {});
+    }
+  }
+  requestWakeLock();
+  document.addEventListener("visibilitychange", function() {
+    if (document.visibilityState === "visible") requestWakeLock();
+  });
+})();
+
+var ws;
+function connectWebSocket() {
+  ws = new WebSocket(WS_URL);
+
+  ws.onopen = function() {
+    el.statusDot.classList.add('connected');
+    el.disconnectedBanner.classList.remove('show');
+    sendRegister();
+  };
+
+  ws.onclose = function() {
+    el.statusDot.classList.remove('connected');
+    el.disconnectedBanner.classList.add('show');
+    setTimeout(connectWebSocket, 2000);
+  };
+
+  ws.onerror = function() {};
+
+  ws.onmessage = function(e) {
+    try {
+      var msg = JSON.parse(e.data);
+
+      if (msg.type === 'state') {
+        serverState = msg;
+        _hookUpdateDisplay(msg);
+        renderSongStack();
+        resetReady(); // song changed
+        return;
+      }
+
+      if (msg.type === 'transport') {
+        transportState = msg.state || 'stopped';
+        renderPlayButton();
+        return;
+      }
+
+      if (msg.command === 0 && msg.song) {
+        currentSongMeta = msg.song.metadata || {};
+        renderCurrentMeta();
+        return;
+      }
+
+      if (msg.command === 0 && msg.setBreak === true) {
+        currentSongMeta = null;
+        renderSongStack();
+        return;
+      }
+
+      // Ready-state broadcast (future server feature)
+      if (msg.type === 'readyState') {
+        renderReadyPlayers(msg.players || []);
+        return;
+      }
+
+    } catch(err) {
+      console.error('WS parse error:', err);
+    }
+  };
+}
+connectWebSocket();
+
+// ---------- Send helpers ----------
+function wsSend(obj) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(obj));
+  }
+}
+
+function sendRegister() {
+  if (playerName) wsSend({ type: 'register', name: playerName });
+}
+
+function sendCommand(action) {
+  wsSend({ type: 'command', action: action });
+}
+
+// ---------- Controls ----------
+el.btnPlay.addEventListener('click', function() { sendCommand('play'); });
+el.btnStop.addEventListener('click', function() { sendCommand('stop'); });
+el.btnNext.addEventListener('click', function() { sendCommand('next'); });
+el.btnPrev.addEventListener('click', function() { sendCommand('prev'); });
+
+el.readyBtn.addEventListener('click', function() {
+  isReady = !isReady;
+  el.readyBtn.classList.toggle('is-ready', isReady);
+  el.readyBtn.textContent = isReady ? '✓ Ready' : 'Ready';
+  wsSend({ type: 'ready', ready: isReady });
+});
+
+function resetReady() {
+  isReady = false;
+  el.readyBtn.classList.remove('is-ready');
+  el.readyBtn.textContent = 'Ready';
+}
+
+// ---------- Rendering ----------
+function renderSongStack() {
+  if (!serverState) return;
+
+  var list = serverState.setList || [];
+  var sp = serverState.songPointer;
+
+  // Setlist label
+  var label = serverState.activeSetlist || 'All Songs';
+  if (serverState.activeLibrary) label = serverState.activeLibrary + ' — ' + label;
+  el.setlistLabel.textContent = label;
+
+  // Previous
+  var prev = findAdjacentItem(list, sp, -1);
+  renderRow(el.prevRow, el.prevName, prev, 'prev');
+
+  // Current
+  var current = (sp >= 0 && sp < list.length) ? list[sp] : null;
+  renderCurrentRow(current);
+
+  // Next
+  var next = findAdjacentItem(list, sp, +1);
+  renderRow(el.nextRow, el.nextName, next, 'next');
+}
+
+function findAdjacentItem(list, sp, direction) {
+  var i = sp + direction;
+  while (i >= 0 && i < list.length) {
+    var item = list[i];
+    if (typeof item === 'string') return { kind: 'song', value: item };
+    if (typeof item === 'object' && item.type === 'divider') return { kind: 'divider', setNumber: item.setNumber };
+    i += direction;
+  }
+  return null; // start or end
+}
+
+function renderRow(rowEl, nameEl, item, position) {
+  rowEl.classList.remove('divider');
+  if (!item) {
+    nameEl.textContent = position === 'prev' ? '— START —' : '— END —';
+    rowEl.classList.remove('divider');
+  } else if (item.kind === 'divider') {
+    nameEl.textContent = '— Set ' + (item.setNumber || '') + ' —';
+    rowEl.classList.add('divider');
+  } else {
+    nameEl.textContent = prettify(item.value);
+  }
+}
+
+function renderCurrentRow(current) {
+  el.currentRow.classList.remove('divider');
+  if (!current) {
+    el.currentName.textContent = '—';
+  } else if (typeof current === 'object' && current.type === 'divider') {
+    el.currentName.textContent = '— Set ' + (current.setNumber || '') + ' —';
+    el.currentRow.classList.add('divider');
+  } else {
+    el.currentName.textContent = prettify(current);
+  }
+  renderCurrentMeta();
+}
+
+function renderCurrentMeta() {
+  if (!currentSongMeta) { el.currentMeta.textContent = ''; return; }
+  var parts = [];
+  if (currentSongMeta.key) parts.push(currentSongMeta.key);
+  if (currentSongMeta.tempo) parts.push(currentSongMeta.tempo + ' BPM');
+  if (currentSongMeta.capo) parts.push('Capo ' + currentSongMeta.capo);
+  el.currentMeta.textContent = parts.join(' · ');
+}
+
+function renderPlayButton() {
+  el.btnPlay.classList.toggle('playing', transportState === 'playing');
+  el.btnPlay.textContent = transportState === 'playing' ? '⏸' : '▶';
+}
+
+function renderReadyPlayers(players) {
+  el.readyPlayers.innerHTML = '';
+  players.forEach(function(p) {
+    if (p.name === playerName) return; // don't show self
+    var pip = document.createElement('div');
+    pip.className = 'player-pip' + (p.ready ? ' ready' : '');
+    pip.innerHTML = '<span class="pip-dot"></span><span>' + esc(p.name) + '</span>';
+    el.readyPlayers.appendChild(pip);
+  });
+}
+
+// ---------- Utilities ----------
+function prettify(name) {
+  if (!name) return '—';
+  return String(name).replace(/\.txt$/i, '').replace(/_/g, ' ');
+}
+
+function esc(v) {
+  return String(v).replace(/[&<>"']/g, function(c) {
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+
+// Keep screen awake
+if ('wakeLock' in navigator) {
+  (async function() { try { await navigator.wakeLock.request('screen'); } catch(e) {} })();
+}
+
+// Double-tap fullscreen
+document.body.addEventListener('dblclick', function() {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
+});
+
+
+// ---------- Setlist panel (full list, tap to jump) ----------
+var fullSetlist = []; // populated from server state messages
+var currentSceneIndex = -1;
+
+function renderSetlistPanel() {
+  var panel = document.getElementById('setlistPanel');
+  if (!panel || fullSetlist.length === 0) return;
+  var items = '';
+  for (var i = 0; i < fullSetlist.length; i++) {
+    var item = fullSetlist[i];
+    var classes = 'setlist-item';
+    if (item.isDivider) classes += ' divider';
+    if (i === currentSceneIndex) classes += ' active';
+    var clickAttr = item.isDivider ? '' : ' onclick="gotoScene(' + i + ')"';
+    var displayName = item.name.replace(/^\*/, '');
+    items += '<div class="' + classes + '"' + clickAttr + '>' + displayName + '</div>';
+  }
+  panel.innerHTML = items;
+  // Scroll active item into view
+  var active = panel.querySelector('.active');
+  if (active) active.scrollIntoView({ block: 'center', behavior: 'smooth' });
+}
+
+function gotoScene(index) {
+  wsSend({ type: 'command', action: 'goto', index: index });
+}
+
+// --- Hook: populate setlist panel from server state ---
+var _origUpdateDisplay = typeof updateDisplay === 'function' ? updateDisplay : null;
+var _hookUpdateDisplay = function(data) {
+  if (data && data.setList) {
+    fullSetlist = [];
+    for (var i = 0; i < data.setList.length; i++) {
+      var item = data.setList[i];
+      if (typeof item === 'object' && item.type === 'divider') {
+        fullSetlist.push({ name: item.name, isDivider: true });
+      } else {
+        // Strip path/extension for display
+        var name = String(item).replace(/\.txt$/i, '').replace(/^.*? - /, '');
+        fullSetlist.push({ name: name, isDivider: false });
+      }
+    }
+  }
+  if (data && typeof data.songPointer === 'number') {
+    currentSceneIndex = data.songPointer;
+  }
+  renderSetlistPanel();
+};
+</script>
+</body>
+</html>

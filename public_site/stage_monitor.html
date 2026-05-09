@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Stage Monitor</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --accent: #e94560;
+      --bg: #000000;
+      --bg-strip: #0a0a12;
+      --text: #ffffff;
+      --text-dim: #6a6a85;
+      --text-mid: #a8a8c0;
+      --downbeat: #4ecca3;
+      --warning: #ffd93d;
+      --font: 'Helvetica Neue', 'SF Pro Display', 'Segoe UI', Arial, sans-serif;
+      --accent-song: var(--accent);   /* tinted by current song's {color} tag */
+    }
+
+    html, body {
+      height: 100%;
+      width: 100%;
+      overflow: hidden;
+    }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+      -webkit-user-select: none;
+      user-select: none;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    /* ============ TOP STRIP ============ */
+    .top-strip {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 18px;
+      background: var(--bg-strip);
+      border-bottom: 2px solid var(--accent-song);
+      transition: border-color 0.3s;
+      font-size: 14px;
+      color: var(--text-mid);
+      min-height: 40px;
+    }
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--accent);
+      flex-shrink: 0;
+      transition: background 0.2s;
+    }
+    .status-dot.connected { background: var(--downbeat); }
+    .setlist-name {
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .position {
+      flex: 0 0 auto;
+      color: var(--text-mid);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ============ TRANSPORT ROW ============ */
+    .transport {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      padding: 14px 18px;
+      font-size: clamp(22px, 4.5vw, 42px);
+      font-weight: 500;
+      font-variant-numeric: tabular-nums;
+    }
+    .play-glyph {
+      flex: 0 0 auto;
+      width: 1.3em;
+      height: 1.3em;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.9em;
+      border-radius: 8px;
+      transition: background 0.2s, color 0.2s;
+      color: var(--text-dim);
+    }
+    .play-glyph.playing {
+      color: var(--downbeat);
+    }
+    .play-glyph.paused {
+      color: var(--warning);
+    }
+    .play-glyph.stopped {
+      color: var(--text-dim);
+    }
+    .time-display {
+      flex: 1;
+      color: var(--text);
+    }
+    .time-display .elapsed { color: var(--downbeat); }
+    .time-display .sep { color: var(--text-dim); margin: 0 0.2em; }
+    .time-display .total { color: var(--text-mid); }
+    .bpm {
+      flex: 0 0 auto;
+      font-size: 0.6em;
+      color: var(--text-mid);
+      letter-spacing: 0.05em;
+    }
+    .bpm .val {
+      color: var(--text);
+      font-weight: 600;
+    }
+    .beat-pulse {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #1a1a22;
+      margin-left: 12px;
+      flex-shrink: 0;
+      transition: background 60ms;
+    }
+    .beat-pulse.flash { background: var(--accent-song); }
+    .beat-pulse.downbeat { background: var(--downbeat); }
+
+    /* ============ NOW (main display) ============ */
+    .now-area {
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px 24px;
+      overflow: hidden;
+      text-align: center;
+      min-height: 0;
+    }
+    .now-label {
+      font-size: clamp(10px, 1.5vw, 14px);
+      color: var(--text-dim);
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .now-title {
+      font-size: clamp(42px, 11vw, 150px);
+      font-weight: 800;
+      line-height: 1.0;
+      color: var(--text);
+      word-break: break-word;
+      max-width: 100%;
+      letter-spacing: -0.01em;
+    }
+    .now-title.set-break {
+      color: var(--warning);
+      font-size: clamp(36px, 9vw, 110px);
+      letter-spacing: 0.05em;
+    }
+    .now-title.end-of-set {
+      color: var(--text-dim);
+    }
+    .now-artist {
+      font-size: clamp(18px, 3.2vw, 42px);
+      color: var(--text-mid);
+      margin-top: 0.4em;
+      font-weight: 400;
+    }
+    .now-meta {
+      font-size: clamp(12px, 1.8vw, 20px);
+      color: var(--text-dim);
+      margin-top: 0.8em;
+      display: flex;
+      gap: 1.6em;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .now-meta .tag .val {
+      color: var(--accent-song);
+      font-weight: 600;
+    }
+
+    /* ============ PREV (sub, above NOW) ============ */
+    .prev-area {
+      flex: 0 0 auto;
+      padding: 10px 24px 8px;
+      border-bottom: 1px solid #1a1a22;
+      background: var(--bg-strip);
+    }
+    .prev-label {
+      font-size: clamp(10px, 1.5vw, 14px);
+      color: var(--text-dim);
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .prev-title {
+      font-size: clamp(16px, 2.8vw, 32px);
+      font-weight: 500;
+      color: var(--text-dim);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .prev-title.divider {
+      color: var(--warning);
+      font-weight: 700;
+      letter-spacing: 0.08em;
+    }
+    .prev-title.end {
+      color: var(--text-dim);
+      font-style: italic;
+    }
+
+    /* ============ NEXT (sub, below NOW) ============ */
+    .next-area {
+      flex: 0 0 auto;
+      padding: 14px 24px 12px;
+      border-top: 1px solid #1a1a22;
+      background: var(--bg-strip);
+    }
+    .next-label {
+      font-size: clamp(10px, 1.5vw, 14px);
+      color: var(--text-dim);
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .next-title {
+      font-size: clamp(20px, 3.6vw, 44px);
+      font-weight: 600;
+      color: var(--text-mid);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .next-title.divider {
+      color: var(--warning);
+      font-weight: 700;
+      letter-spacing: 0.08em;
+    }
+    .next-title.end {
+      color: var(--text-dim);
+      font-style: italic;
+    }
+
+    /* ============ PROGRESS BAR ============ */
+    .progress-track {
+      flex: 0 0 auto;
+      height: 6px;
+      background: #12121a;
+      position: relative;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: var(--accent-song);
+      transition: width 0.1s linear, background 0.3s;
+    }
+
+    /* ============ DISCONNECTED OVERLAY ============ */
+    .disconnected-banner {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      background: var(--accent);
+      color: white;
+      text-align: center;
+      padding: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      transform: translateY(-100%);
+      transition: transform 0.2s;
+      z-index: 100;
+    }
+    .disconnected-banner.show { transform: translateY(0); }
+  </style>
+</head>
+<body>
+
+  <div class="disconnected-banner" id="disconnectedBanner">⚠ Reconnecting to server…</div>
+
+  <!-- Top strip: connection, setlist name, position -->
+  <div class="top-strip">
+    <div class="status-dot" id="statusDot"></div>
+    <div class="setlist-name" id="setlistName">—</div>
+    <div class="position" id="position"></div>
+  </div>
+
+  <!-- Transport row -->
+  <div class="transport">
+    <div class="play-glyph stopped" id="playGlyph">■</div>
+    <div class="time-display" id="timeDisplay">
+      <span class="elapsed">0:00</span><span class="sep">/</span><span class="total">0:00</span>
+    </div>
+    <div class="bpm"><span class="val" id="bpmVal">—</span> BPM</div>
+    <div class="beat-pulse" id="beatPulse"></div>
+  </div>
+
+  <!-- PREV -->
+  <div class="prev-area">
+    <div class="prev-label">◀ PREV</div>
+    <div class="prev-title" id="prevTitle">—</div>
+  </div>
+
+  <!-- NOW (main) -->
+  <div class="now-area">
+    <div class="now-label">▶ NOW</div>
+    <div class="now-title" id="nowTitle">—</div>
+    <div class="now-artist" id="nowArtist"></div>
+    <div class="now-meta" id="nowMeta"></div>
+  </div>
+
+  <!-- NEXT -->
+  <div class="next-area">
+    <div class="next-label">NEXT ▶▶</div>
+    <div class="next-title" id="nextTitle">—</div>
+  </div>
+
+  <!-- Progress bar (pinned to bottom) -->
+  <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+
+
+<script>
+// ===========================================================================
+// Stage Monitor — glanceable tablet view of jakaraoke state
+// ===========================================================================
+// Reads the same WebSocket protocol as client.html; renders a minimal
+// NOW/NEXT/transport display optimized for stage-distance readability.
+// No server changes required. See docs/AI_HANDOFF.md for wire protocol.
+// ===========================================================================
+
+// ---------- Config ----------
+var wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+var WS_URL = wsProtocol + '//' + (window.location.host || 'localhost:9898') + '/';
+console.log('Stage Monitor WebSocket URL: ' + WS_URL);
+
+// Color map matches client.html
+var COLOR_MAP = {
+  'G': '#4ecca3',  // Green
+  'P': '#c77dff',  // Purple
+  'Y': '#ffd93d',  // Yellow
+};
+
+// Downbeat note convention — matches client.html (note === 37)
+var DOWNBEAT_NOTE = 37;
+
+// ---------- State ----------
+var state = null;              // last 'state' message
+var currentSongMeta = null;    // last song metadata (from song payload)
+var currentSongFilename = null;
+
+// Transport interpolation
+var transport = {
+  state: 'stopped',            // 'stopped' | 'playing' | 'paused'
+  elapsedOffset: 0,            // seconds at moment of last server update
+  playStartedAt: null,         // performance.now() when playing started
+  tempo: 120,
+  bpb: 4,
+  songDuration: 0              // seconds, from metadata or state
+};
+
+// ---------- DOM refs ----------
+var el = {
+  statusDot: document.getElementById('statusDot'),
+  disconnectedBanner: document.getElementById('disconnectedBanner'),
+  setlistName: document.getElementById('setlistName'),
+  position: document.getElementById('position'),
+  playGlyph: document.getElementById('playGlyph'),
+  timeDisplay: document.getElementById('timeDisplay'),
+  bpmVal: document.getElementById('bpmVal'),
+  beatPulse: document.getElementById('beatPulse'),
+  prevTitle: document.getElementById('prevTitle'),
+  nowTitle: document.getElementById('nowTitle'),
+  nowArtist: document.getElementById('nowArtist'),
+  nowMeta: document.getElementById('nowMeta'),
+  nextTitle: document.getElementById('nextTitle'),
+  progressFill: document.getElementById('progressFill')
+};
+
+// ---------- WebSocket ----------
+var ws;
+function connectWebSocket() {
+  ws = new WebSocket(WS_URL);
+
+  ws.onopen = function() {
+    el.statusDot.classList.add('connected');
+    el.disconnectedBanner.classList.remove('show');
+  };
+
+  ws.onclose = function() {
+    el.statusDot.classList.remove('connected');
+    el.disconnectedBanner.classList.add('show');
+    setTimeout(connectWebSocket, 2000);
+  };
+
+  ws.onerror = function() {};
+
+  ws.onmessage = function(e) {
+    try {
+      var msg = JSON.parse(e.data);
+
+      // Song change
+      if (msg.command === 0 && msg.song) {
+        handleSong(msg.song);
+        return;
+      }
+
+      // Set break
+      if (msg.command === 0 && msg.setBreak === true) {
+        handleSetBreak(msg.setNumber);
+        return;
+      }
+
+      // Beat pulse
+      if (msg.command === 144) {
+        flashBeat(msg.note);
+        return;
+      }
+
+      // Transport update
+      if (msg.type === 'transport') {
+        handleTransport(msg);
+        return;
+      }
+
+      // State update (setlist / pointer)
+      if (msg.type === 'state') {
+        state = msg;
+        renderPosition();
+        renderNowNext();
+        return;
+      }
+    } catch(err) {
+      console.error('WS parse error:', err);
+    }
+  };
+}
+connectWebSocket();
+
+
+// ---------- Handlers ----------
+function handleSong(song) {
+  currentSongMeta = (song && song.metadata) ? song.metadata : {};
+  transport.songDuration = currentSongMeta.durationSeconds || 0;
+  if (currentSongMeta.tempo) transport.tempo = currentSongMeta.tempo;
+
+  // Tint accent by song color
+  applyAccentColor(currentSongMeta.color);
+
+  renderNowNext();
+  renderTransport();
+}
+
+function handleSetBreak(setNumber) {
+  currentSongMeta = null;
+  transport.songDuration = 0;
+  applyAccentColor(null);
+
+  el.nowTitle.className = 'now-title set-break';
+  el.nowTitle.textContent = '— SET BREAK —' + (setNumber > 1 ? ' (Set ' + setNumber + ')' : '');
+  el.nowArtist.textContent = '';
+  el.nowMeta.innerHTML = '';
+  renderPrev();
+  renderNext();
+  renderTransport();
+}
+
+function handleTransport(msg) {
+  transport.state = msg.state || 'stopped';
+  transport.tempo = msg.tempo || transport.tempo;
+  transport.bpb = msg.bpb || transport.bpb;
+  transport.elapsedOffset = msg.elapsed || 0;
+  transport.playStartedAt = (transport.state === 'playing')
+    ? (performance.now() - transport.elapsedOffset * 1000)
+    : null;
+  renderTransport();
+}
+
+function applyAccentColor(colorCode) {
+  var c = (colorCode && COLOR_MAP[colorCode]) ? COLOR_MAP[colorCode] : '#e94560';
+  document.documentElement.style.setProperty('--accent-song', c);
+}
+
+
+// ---------- Rendering ----------
+function renderPosition() {
+  if (!state) return;
+
+  var setlistLabel = state.activeSetlist || 'All Songs';
+  if (state.activeLibrary) {
+    setlistLabel = state.activeLibrary + ' — ' + setlistLabel;
+  }
+  el.setlistName.textContent = setlistLabel;
+
+  if (state.songPointer >= 0 && state.setList) {
+    // Count only songs (not dividers) for the position readout
+    var songCount = 0;
+    var currentSongOrdinal = 0;
+    for (var i = 0; i < state.setList.length; i++) {
+      var item = state.setList[i];
+      var isSong = (typeof item === 'string');
+      if (isSong) songCount++;
+      if (i === state.songPointer && isSong) currentSongOrdinal = songCount;
+    }
+    if (currentSongOrdinal > 0) {
+      el.position.textContent = currentSongOrdinal + ' of ' + songCount;
+    } else {
+      el.position.textContent = '';
+    }
+  } else {
+    el.position.textContent = '';
+  }
+}
+
+function renderNowNext() {
+  if (!state) return;
+
+  var sp = state.songPointer;
+  var list = state.setList || [];
+  var current = (sp >= 0 && sp < list.length) ? list[sp] : null;
+
+  // NOW
+  if (current && typeof current === 'object' && current.type === 'divider') {
+    // we landed on a divider — set-break payload usually handles this, but be safe
+    el.nowTitle.className = 'now-title set-break';
+    el.nowTitle.textContent = '— SET BREAK —' + (current.setNumber > 1 ? ' (Set ' + current.setNumber + ')' : '');
+    el.nowArtist.textContent = '';
+    el.nowMeta.innerHTML = '';
+  } else if (currentSongMeta) {
+    // we have rich metadata from a song payload
+    el.nowTitle.className = 'now-title';
+    el.nowTitle.textContent = currentSongMeta.title || current || '—';
+    el.nowArtist.textContent = currentSongMeta.artist || '';
+    renderNowMeta(currentSongMeta);
+  } else if (typeof current === 'string') {
+    // fallback: raw filename, no metadata yet (e.g., fresh connect before a song fires)
+    el.nowTitle.className = 'now-title';
+    el.nowTitle.textContent = prettifyFilename(current);
+    el.nowArtist.textContent = '';
+    el.nowMeta.innerHTML = '';
+  } else {
+    el.nowTitle.className = 'now-title end-of-set';
+    el.nowTitle.textContent = '—';
+    el.nowArtist.textContent = '';
+    el.nowMeta.innerHTML = '';
+  }
+
+  renderPosition();
+  renderPrev();
+  renderNext();
+}
+
+function renderPrev() {
+  if (!state) { el.prevTitle.textContent = '—'; el.prevTitle.className = 'prev-title'; return; }
+
+  var list = state.setList || [];
+  var sp = state.songPointer;
+  var prevItem = null;
+
+  for (var i = sp - 1; i >= 0; i--) {
+    var item = list[i];
+    if (typeof item === 'string') {
+      prevItem = { kind: 'song', value: item };
+      break;
+    }
+    if (typeof item === 'object' && item.type === 'divider') {
+      prevItem = { kind: 'divider', setNumber: item.setNumber };
+      break;
+    }
+  }
+
+  if (!prevItem) {
+    el.prevTitle.className = 'prev-title end';
+    el.prevTitle.textContent = '— START OF SET —';
+  } else if (prevItem.kind === 'divider') {
+    el.prevTitle.className = 'prev-title divider';
+    el.prevTitle.textContent = '— SET BREAK —' + (prevItem.setNumber > 1 ? ' (Set ' + prevItem.setNumber + ')' : '');
+  } else {
+    el.prevTitle.className = 'prev-title';
+    el.prevTitle.textContent = prettifyFilename(prevItem.value);
+  }
+}
+
+function renderNowMeta(meta) {
+  var parts = [];
+  if (meta.key)   parts.push('<span class="tag">KEY <span class="val">' + esc(meta.key) + '</span></span>');
+  if (meta.capo)  parts.push('<span class="tag">CAPO <span class="val">' + esc(meta.capo) + '</span></span>');
+  if (meta.tempo) parts.push('<span class="tag"><span class="val">' + esc(meta.tempo) + '</span> BPM</span>');
+  el.nowMeta.innerHTML = parts.join('');
+}
+
+function renderNext() {
+  if (!state) { el.nextTitle.textContent = '—'; return; }
+
+  var list = state.setList || [];
+  var sp = state.songPointer;
+  var nextItem = null;
+
+  for (var i = sp + 1; i < list.length; i++) {
+    var item = list[i];
+    if (typeof item === 'string') {
+      nextItem = { kind: 'song', value: item };
+      break;
+    }
+    if (typeof item === 'object' && item.type === 'divider') {
+      nextItem = { kind: 'divider', setNumber: item.setNumber };
+      break;
+    }
+  }
+
+  if (!nextItem) {
+    el.nextTitle.className = 'next-title';
+    el.nextTitle.textContent = '— END OF SET —';
+  } else if (nextItem.kind === 'divider') {
+    el.nextTitle.className = 'next-title divider';
+    el.nextTitle.textContent = '— SET BREAK —' + (nextItem.setNumber > 1 ? ' (Set ' + nextItem.setNumber + ')' : '');
+  } else {
+    el.nextTitle.className = 'next-title';
+    el.nextTitle.textContent = prettifyFilename(nextItem.value);
+  }
+}
+
+function renderTransport() {
+  var glyph = '■';
+  if (transport.state === 'playing') glyph = '▶';
+  else if (transport.state === 'paused') glyph = '⏸';
+  el.playGlyph.textContent = glyph;
+  el.playGlyph.className = 'play-glyph ' + transport.state;
+
+  el.bpmVal.textContent = transport.tempo ? Math.round(transport.tempo) : '—';
+
+  // The time display and progress are updated by the ticker
+  updateTimeAndProgress();
+}
+
+// ---------- Beat pulse ----------
+var beatTimeout = null;
+function flashBeat(note) {
+  el.beatPulse.className = 'beat-pulse ' + (note === DOWNBEAT_NOTE ? 'downbeat' : 'flash');
+  clearTimeout(beatTimeout);
+  beatTimeout = setTimeout(function() { el.beatPulse.className = 'beat-pulse'; }, 100);
+}
+
+
+// ---------- Elapsed time & progress bar ticker ----------
+function getElapsed() {
+  if (transport.state === 'playing' && transport.playStartedAt != null) {
+    return (performance.now() - transport.playStartedAt) / 1000;
+  }
+  return transport.elapsedOffset || 0;
+}
+
+function updateTimeAndProgress() {
+  var elapsed = getElapsed();
+  var total = transport.songDuration || 0;
+
+  // Time display
+  el.timeDisplay.innerHTML =
+    '<span class="elapsed">' + formatTime(elapsed) + '</span>' +
+    '<span class="sep">/</span>' +
+    '<span class="total">' + formatTime(total) + '</span>';
+
+  // Progress bar
+  if (total > 0) {
+    var pct = Math.max(0, Math.min(100, (elapsed / total) * 100));
+    el.progressFill.style.width = pct + '%';
+  } else {
+    el.progressFill.style.width = '0%';
+  }
+}
+
+// Tick at 10Hz — smooth enough for seconds readout + progress bar
+setInterval(updateTimeAndProgress, 100);
+
+
+// ---------- Utilities ----------
+function formatTime(seconds) {
+  if (!seconds || seconds < 0) seconds = 0;
+  var m = Math.floor(seconds / 60);
+  var s = Math.floor(seconds % 60);
+  return m + ':' + (s < 10 ? '0' : '') + s;
+}
+
+function prettifyFilename(name) {
+  if (!name) return '—';
+  // Strip .txt if present, underscores → spaces, but keep the name recognizable
+  return String(name).replace(/\.txt$/i, '').replace(/_/g, ' ');
+}
+
+function esc(v) {
+  return String(v).replace(/[&<>"']/g, function(c) {
+    return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
+  });
+}
+
+// Keep the screen awake on supported browsers (iOS Safari ignores; Chrome/Edge honor)
+if ('wakeLock' in navigator) {
+  (async function() {
+    try { await navigator.wakeLock.request('screen'); } catch(e) {}
+  })();
+}
+
+// Click anywhere to go fullscreen on tablets (nice-to-have for mic-stand kiosk mode)
+document.body.addEventListener('dblclick', function() {
+  if (document.fullscreenElement) {
+    document.exitFullscreen();
+  } else if (document.documentElement.requestFullscreen) {
+    document.documentElement.requestFullscreen();
+  }
+});
+
+</script>
+</body>
+</html>

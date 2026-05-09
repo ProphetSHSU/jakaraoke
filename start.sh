@@ -4,6 +4,7 @@
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PID_FILE="$SCRIPT_DIR/.server.pid"
+NODE="/usr/local/bin/node"
 
 # Check if already running
 if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
@@ -14,7 +15,7 @@ fi
 # Start the server in the background
 echo "🚀 Starting Jakeraoke server..."
 cd "$SCRIPT_DIR/server"
-node websocket-server.js &
+$NODE websocket-server.js &
 SERVER_PID=$!
 echo "$SERVER_PID" > "$PID_FILE"
 
@@ -41,9 +42,12 @@ else
     PROTOCOL="http"
 fi
 
-# Open the clients via HTTP/HTTPS server (not local files)
-echo "🎤 Opening display client..."
-open "$PROTOCOL://localhost:9898/"
+# Open views
+echo "🎤 Opening Lyrics view..."
+open "$PROTOCOL://localhost:9898/lyrics.html"
+
+echo "🧭 Opening Navigator view..."
+open "$PROTOCOL://localhost:9898/navigator.html"
 
 echo "🎛️  Opening test harness..."
 open "$PROTOCOL://localhost:9898/test_harness.html"
@@ -51,6 +55,7 @@ open "$PROTOCOL://localhost:9898/test_harness.html"
 echo ""
 echo "Ready! To stop: ./stop.sh"
 echo ""
-
-# Show network info automatically
-"$SCRIPT_DIR/show_network_info.sh"
+echo "Other devices on your network:"
+echo "  Lyrics:    $PROTOCOL://$(ipconfig getifaddr en0):9898/lyrics.html"
+echo "  Navigator: $PROTOCOL://$(ipconfig getifaddr en0):9898/navigator.html"
+echo ""

@@ -7,6 +7,7 @@ var navigator = require('jzz');
 var fs = require("fs");
 var path = require("path");
 var chordpro = require("./chordpro-parser");
+var additions = require("./server-additions");
 
 
 // ============================================================
@@ -51,7 +52,8 @@ var availableSetlists = [];  // all setlist files found in Setlists/ subfolder
 var setList = [];            // the active setlist (ordered array of filenames)
 var setListName = null;      // name of the active setlist (null = "All Songs")
 var songPointer = -1;
-var songDurations = {};      // filename → durationSeconds (parsed from metadata)
+var songDurations = {};
+var currentSongPayload = null; // cached last-sent song payload (for late-joiner sync)      // filename → durationSeconds (parsed from metadata)
 
 // ============================================================
 // Transport State Machine
@@ -360,6 +362,9 @@ function handleRequest(request, response) {
     var fullPath;
     if (filePath.startsWith('/client') || filePath === '/client.html') {
         fullPath = path.join(__dirname, '..', 'client', path.basename(filePath));
+    } else if (filePath === '/lyrics.html' || filePath === '/navigator.html') {
+        // New views served from public_site
+        fullPath = path.join(__dirname, '..', 'public_site', path.basename(filePath));
     } else if (filePath.startsWith('/test_harness') || filePath === '/test_harness.html') {
         fullPath = path.join(__dirname, '..', 'public_site', path.basename(filePath));
     } else {
@@ -463,9 +468,11 @@ wsServer.on('request', function(request) {
     const connection = request.accept(null, request.origin);
     remoteConnection.push(connection);
 
-    // Send current state and transport to the newly connected client
+    // Send current state, transport, and ready-check to the newly connected client
     connection.sendUTF(JSON.stringify(getStatePayload()));
     connection.sendUTF(JSON.stringify(getTransportPayload()));
+    connection.sendUTF(JSON.stringify(additions.getReadyStatePayload()));
+    if (currentSongPayload) connection.sendUTF(currentSongPayload);
 
     connection.on('message', function(message) {
       console.log('Received Message:', message.utf8Data);
@@ -522,6 +529,31 @@ wsServer.on('request', function(request) {
           return;
         }
 
+        // Player registration (navigator/lyrics views)
+        if (parsed.type === 'register') {
+          additions.registerPlayer(connection, parsed.name);
+          additions.broadcastReadyState(remoteConnection);
+          return;
+        }
+
+        // Ready toggle
+        if (parsed.type === 'ready') {
+          additions.setPlayerReady(connection, parsed.ready);
+          additions.broadcastReadyState(remoteConnection);
+          return;
+        }
+
+        // Client commands (play/stop/next/prev from navigator/lyrics)
+        if (parsed.type === 'command') {
+          additions.handleCommand(parsed, {
+            transportPlay: transportPlay,
+            transportStop: transportStop,
+            transportPause: transportPause,
+            sendSong: sendSong
+          }, connection._playerName);
+          return;
+        }
+
       } catch(e) {
         // Not JSON, treat as regular message
       }
@@ -530,6 +562,8 @@ wsServer.on('request', function(request) {
     });
     connection.on('close', function(reasonCode, description) {
         console.log('Client has disconnected.');
+        additions.unregisterPlayer(connection);
+        additions.broadcastReadyState(remoteConnection);
         // Remove from connection list
         var idx = remoteConnection.indexOf(connection);
         if (idx > -1) remoteConnection.splice(idx, 1);
@@ -542,7 +576,10 @@ wsServer.on('request', function(request) {
 // ============================================================
 
 //test to see if the browser supports webMIDI
-if (navigator.requestMIDIAccess) {
+// MIDI listeners DISABLED (2026-05-09) — UDP bridge is now the sole path.
+// Ableton state flows via Set State Broadcaster M4L → UDP:9899 → server.
+// Old MIDI path caused state conflicts (song revert on play).
+if (false && navigator.requestMIDIAccess) {
     console.log('This browser supports WebMIDI!');
 
     navigator.requestMIDIAccess().then(onMIDISuccess, onMIDIFailure);
@@ -679,6 +716,10 @@ function sendSong(note) {
         // Also broadcast updated state and transport reset
         broadcastState();
         broadcastTransport();
+
+        // Reset ready-check on set break
+        additions.resetAllReady();
+        additions.broadcastReadyState(remoteConnection);
         return;
     }
 
@@ -707,16 +748,21 @@ function sendSong(note) {
             "songRaw": songText
         }
 
+        currentSongPayload = JSON.stringify(payload);
         var arrayLength = remoteConnection.length;
         console.log("array Length = " + arrayLength)
         for (var i = 0; i < arrayLength; i++) {
-            remoteConnection[i].sendUTF(JSON.stringify(payload));
+            remoteConnection[i].sendUTF(currentSongPayload);
             console.log('songPointer: ' + songPointer)
         }
 
         // Also broadcast updated state and transport reset so clients know the current position
         broadcastState();
         broadcastTransport();
+
+        // Reset ready-check on song change
+        additions.resetAllReady();
+        additions.broadcastReadyState(remoteConnection);
 
     } catch(error) {
         console.log(error)
@@ -746,3 +792,181 @@ function noteOn(note, velocity) {
 function noteOff(note) {
     //...
 }
+
+// ===========================================================================
+// UDP Bridge — Set State Broadcaster integration (Phase 2b)
+// ===========================================================================
+// Receives state from M4L (scene changes, transport, playhead) and relays
+// client commands to M4L. Ableton is the source of truth.
+
+var udpBridge = require("./udp-bridge");
+
+// Load song by scene name (slug-matched, bypasses pointer-based navigation)
+function loadSongBySceneName(sceneName, sceneIndex, sceneCount) {
+    if (!sceneName) return;
+
+    // Strip leading asterisk (guitar solo marker)
+    var cleanName = sceneName.replace(/^\*/, "").trim();
+
+    // Check if divider
+    if (cleanName.indexOf("---") !== -1 || cleanName.replace(/-/g, "").trim() === "") {
+        console.log("UDP scene: divider - " + sceneName);
+        // Determine which set number this divider represents
+        var dividerSetNumber = 1;
+        for (var di = 0; di < setList.length; di++) {
+            if (typeof setList[di] === "object" && setList[di].type === "divider") {
+                if (setList[di].name === sceneName || setList[di].name === cleanName) break;
+                dividerSetNumber++;
+            }
+        }
+        // Broadcast divider state to clients
+        var payload = { "command": 0, "setBreak": true, "setNumber": dividerSetNumber, "sceneName": sceneName };
+        currentSongPayload = JSON.stringify(payload);
+        for (var i = 0; i < remoteConnection.length; i++) {
+            remoteConnection[i].sendUTF(currentSongPayload);
+        }
+        broadcastState();
+        additions.resetAllReady();
+        additions.broadcastReadyState(remoteConnection);
+        return;
+    }
+
+    // Slug-match scene name to song file
+    var match = additions.matchSceneToSong(cleanName, availableSongs, null);
+    if (!match.filename) {
+        console.log("UDP scene: NO MATCH for \"" + sceneName + "\" (slug: " + additions.slugify(cleanName) + ")");
+        // Send scene-name-only to clients (no lyrics)
+        var payload = { "command": 0, "song": { title: cleanName, lines: [], metadata: {} }, "noLyrics": true };
+        for (var i = 0; i < remoteConnection.length; i++) {
+            remoteConnection[i].sendUTF(JSON.stringify(payload));
+        }
+        broadcastState();
+        return;
+    }
+
+    console.log("UDP scene: \"" + sceneName + "\" → " + match.filename + " [" + match.method + "]");
+
+    // Load and broadcast song
+    var songPath = getSongPath(match.filename);
+    try {
+        var songText = fs.readFileSync(songPath).toString("utf-8");
+        var parsed = chordpro.parse(songText);
+
+        // Update internal pointer to match (best-effort sync with setList)
+        var setListIdx = setList.indexOf(match.filename);
+        if (setListIdx >= 0) songPointer = setListIdx;
+
+        // Reset transport on song change
+        if (transport.state !== "stopped") {
+            transport.state = "stopped";
+            transport.elapsedAtPause = 0;
+            transport.playStartedAt = null;
+        }
+        if (parsed.metadata.tempo) {
+            transport.tempo = parsed.metadata.tempo;
+        }
+
+        var payload = { "command": 0, "song": parsed, "songRaw": songText };
+        currentSongPayload = JSON.stringify(payload);
+        for (var i = 0; i < remoteConnection.length; i++) {
+            remoteConnection[i].sendUTF(currentSongPayload);
+        }
+
+        broadcastState();
+        broadcastTransport();
+        additions.resetAllReady();
+        additions.broadcastReadyState(remoteConnection);
+    } catch (e) {
+        console.error("UDP scene load error:", e.message);
+    }
+}
+
+// Start UDP bridge
+udpBridge.start({
+    onScene: function(data) {
+        // data: { type:"scene", index, name, count }
+        loadSongBySceneName(data.name, data.index, data.count);
+    },
+    onTransport: function(data) {
+        // data: { type:"transport", state:"playing"|"stopped", tempo, time_sig }
+        if (data.state === "playing" && transport.state !== "playing") {
+            transport.playStartedAt = Date.now();
+            transport.state = "playing";
+            broadcastTransport();
+        } else if (data.state === "stopped" && transport.state !== "stopped") {
+            transport.state = "stopped";
+            transport.elapsedAtPause = 0;
+            transport.playStartedAt = null;
+            broadcastTransport();
+        }
+        if (data.tempo && data.tempo !== transport.tempo) {
+            transport.tempo = data.tempo;
+            broadcastTransport();
+        }
+    },
+    onPlayhead: function(data) {
+        // data: { type:"playhead", bar, beat }
+        // Forward to all WS clients for measure-accurate scroll
+        var payload = { "type": "playhead", "bar": data.bar, "beat": data.beat };
+        for (var i = 0; i < remoteConnection.length; i++) {
+            remoteConnection[i].sendUTF(JSON.stringify(payload));
+        }
+    },
+    onScenes: function(data) {
+        // data: { type:"scenes", scenes:["name1","name2",...] }
+        console.log("UDP: received scene list (" + data.scenes.length + " scenes)");
+
+        // Rebuild setList from Ableton scenes (replaces Dropbox-derived list)
+        var newSetList = [];
+        var parkingLot = false;
+        for (var i = 0; i < data.scenes.length; i++) {
+            var name = data.scenes[i];
+            // Detect parking lot divider (all hyphens, 6+ chars)
+            if (name.replace(/-/g, "").trim() === "" && name.length >= 6) {
+                parkingLot = true;
+                continue;
+            }
+            if (parkingLot) continue; // skip parking lot songs
+
+            // Detect named dividers
+            if (name.indexOf("---") !== -1) {
+                newSetList.push({ type: "divider", name: name, setNumber: newSetList.filter(function(x){return x.type==="divider";}).length + 1 });
+                continue;
+            }
+
+            // Strip asterisk, slug-match to file
+            var clean = name.replace(/^\*/, "").trim();
+            var match = additions.matchSceneToSong(clean, availableSongs, null);
+            if (match.filename) {
+                newSetList.push(match.filename);
+            } else {
+                // No match — include scene name as-is (will show no lyrics)
+                newSetList.push(name);
+            }
+        }
+
+        setList = newSetList;
+        songPointer = -1;
+        console.log("UDP: setList rebuilt from Ableton (" + newSetList.length + " items)");
+        broadcastState();
+    }
+
+});
+
+// Update handleCommand to relay commands to M4L (Phase 2b)
+// ONLY relay to M4L — do NOT execute locally. Ableton is source of truth.
+// Scene change will come back via UDP observer and trigger loadSongBySceneName.
+additions.handleCommand = function(parsed, fns, playerName) {
+    if (parsed.action) {
+        var cmd = { type: "command", action: parsed.action }; if (parsed.index !== undefined) cmd.index = parsed.index; udpBridge.sendCommand(cmd);
+        console.log("UDP: relayed " + parsed.action + " from " + (playerName || "unknown"));
+    }
+};
+
+console.log("UDP bridge integration active (Phase 2b) — udp-bridge v1.2");
+
+// Request state refresh from M4L (handles "server starts after Ableton" case)
+setTimeout(function() {
+    udpBridge.sendCommand({ type: "command", action: "refresh" });
+    console.log("UDP: requested state refresh from M4L");
+}, 1000);
