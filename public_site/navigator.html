@@ -210,6 +210,23 @@
       background: #fff; position: absolute; top: 2px; left: 2px; transition: left 0.2s;
     }
     .toggle-track.on .toggle-knob { left: 22px; }
+    
+    /* === SET PROGRESS === */
+    .set-progress {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 3px; padding: 6px 16px;
+      font-size: 15px; font-weight: 600; color: #e0e0f0;
+      background: var(--bg-strip, #0a0a12);
+      border-top: 1px solid #1a1a2e;
+    }
+    .set-progress .bar {
+      flex: 1; max-width: 200px; height: 6px;
+      background: #1a1a2e; border-radius: 3px; overflow: hidden;
+    }
+    .set-progress .fill {
+      height: 100%; background: var(--accent, #e94560);
+      border-radius: 2px; transition: width 0.5s;
+    }
     .ctrl-btn {
       touch-action: manipulation;
       width: 64px; height: 64px;
@@ -442,6 +459,16 @@
     <button class="ctrl-btn" id="btnNext" title="Next">⏭</button>
   </div>
 
+  <!-- Set progress -->
+  <div class="set-progress" id="setProgress">
+    <div style="display:flex;align-items:center;gap:8px;width:100%;justify-content:center;">
+      <span id="setProgressText"></span>
+      <div class="bar"><div class="fill" id="setProgressFill"></div></div>
+      <span id="setProgressTime"></span>
+    </div>
+    <div id="setRemaining" style="font-size:13px;color:#4ecca3;font-weight:500;"></div>
+  </div>
+
   <!-- Ready check -->
   <div class="ready-bar">
     <button class="ready-btn" id="readyBtn">Ready</button>
@@ -638,12 +665,71 @@ applyNavPrefs();
     else if (currentSongMeta && currentSongMeta.tempo) startMetronome(currentSongMeta.tempo);
   });
 
-  detailsToggle.addEventListener('click', function() {
-    navPrefs.showDetails = !navPrefs.showDetails;
-    localStorage.setItem('nav_show_details', String(navPrefs.showDetails));
-    applyNavPrefs();
-  });
 })();
+
+
+// ---------- Set Progress ----------
+function fmtDuration(secs) {
+  if (!secs || secs <= 0) return '0:00';
+  var h = Math.floor(secs / 3600);
+  var m = Math.floor((secs % 3600) / 60);
+  var s = Math.floor(secs % 60);
+  if (h > 0) return h + ':' + (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+  return m + ':' + (s < 10 ? '0' : '') + s;
+}
+
+function renderSetProgress(state) {
+  var el = document.getElementById('setProgress');
+  if (!el || !state || !state.songDurations) { if (el) el.style.display = 'none'; return; }
+
+  var durations = state.songDurations || [];
+  var setList = state.setList || [];
+  var total = state.totalSetSeconds || 0;
+  var pointer = state.songPointer || 0;
+
+  // Count songs, compute elapsed, find current set boundaries
+  var songCount = 0; var currentSongNum = 0;
+  var elapsed = 0;
+  var currentSetStart = 0; // index of first song in current set
+  var currentSetEnd = setList.length; // index after last song in current set
+
+  // Find set boundaries around pointer
+  for (var i = pointer; i >= 0; i--) {
+    if (typeof setList[i] === 'object' && setList[i].type === 'divider') { currentSetStart = i + 1; break; }
+  }
+  for (var i = pointer + 1; i < setList.length; i++) {
+    if (typeof setList[i] === 'object' && setList[i].type === 'divider') { currentSetEnd = i; break; }
+  }
+
+  // Compute set remaining (from current song to end of current set)
+  var setRemaining = 0;
+  for (var i = pointer; i < currentSetEnd; i++) {
+    setRemaining += durations[i] || 0;
+  }
+
+  // Compute total remaining (from current song to end)
+  var totalRemaining = 0;
+  for (var i = pointer; i < durations.length; i++) {
+    totalRemaining += durations[i] || 0;
+  }
+
+  // Count songs and elapsed
+  for (var i = 0; i < durations.length; i++) {
+    var isDivider = typeof setList[i] === 'object';
+    if (!isDivider) songCount++;
+    if (i < pointer) elapsed += durations[i];
+    if (i === pointer && !isDivider) currentSongNum = songCount;
+  }
+
+  if (total <= 0 || songCount === 0) { el.style.display = 'none'; return; }
+  el.style.display = 'flex';
+
+  var pct = Math.min(100, Math.round((elapsed / total) * 100));
+  document.getElementById('setProgressText').textContent = 'Song ' + currentSongNum + ' of ' + songCount;
+  document.getElementById('setProgressFill').style.width = pct + '%';
+  document.getElementById('setProgressTime').textContent = fmtDuration(elapsed) + ' / ' + fmtDuration(total);
+  document.getElementById('setRemaining').textContent = fmtDuration(setRemaining) + ' left in set \u00b7 ' + fmtDuration(totalRemaining) + ' left total';
+}
 
 function renderHealthBanner(unmatched) {
   var banner = document.getElementById("healthBanner");
@@ -679,6 +765,7 @@ function connectWebSocket() {
 
       if (msg.type === 'state') {
         serverState = msg;
+        renderSetProgress(msg);
         renderHealthBanner(msg.unmatchedScenes);
         _hookUpdateDisplay(msg);
         renderSongStack();

@@ -40,7 +40,7 @@
 
     body {
       overflow-x: hidden;
-      padding-top: 54px;
+      padding-top: 72px;
       -webkit-user-select: none; user-select: none;
     }
 
@@ -368,6 +368,25 @@
     body.hide-chords .song-line.has-chords { padding-top: 2px; }
     body.hide-chords .song-line.chords-only { display: none; }
     body.hide-sections .section-label { display: none; }
+    
+    /* === SET PROGRESS === */
+    .set-progress {
+      display: none; align-items: center; justify-content: center;
+      gap: 8px; padding: 3px 16px;
+      font-size: 11px; color: var(--text-dim, #6a6a85);
+      background: var(--bg-header, #0a0a12);
+      border-bottom: 1px solid #1a1a2e;
+      position: fixed; top: 42px; left: 0; right: 0; z-index: 19;
+    }
+    .set-progress.visible { display: flex; }
+    .set-progress .bar {
+      flex: 1; max-width: 160px; height: 3px;
+      background: #1a1a2e; border-radius: 2px; overflow: hidden;
+    }
+    .set-progress .fill {
+      height: 100%; background: var(--accent-song, #e94560);
+      border-radius: 2px; transition: width 0.5s;
+    }
     .scroll-target-line {
       position: fixed; left: 0; right: 0;
       height: 2px;
@@ -431,6 +450,13 @@
       <div class="metro-dot" id="metroDot1"></div>
     </div>
     <button class="settings-btn" id="settingsBtn" title="Settings">⚙</button>
+  </div>
+
+  <!-- Set progress -->
+  <div class="set-progress" id="setProgress">
+    <span id="setProgressText"></span>
+    <div class="bar"><div class="fill" id="setProgressFill"></div></div>
+    <span id="setProgressTime"></span>
   </div>
 
   <!-- Scroll target line -->
@@ -760,7 +786,7 @@ function connectWebSocket() {
       if (msg.command === 144) { /* beat pulse — could flash header border */ return; }
       if (msg.type === 'playhead') { handlePlayhead(msg); return; }
       if (msg.type === 'transport') { handleTransport(msg); return; }
-      if (msg.type === 'state') { serverState = msg; renderNext(); resetReady(); populateGotoDropdown(msg.setList); renderHealthBanner(msg.unmatchedScenes); return; }
+      if (msg.type === 'state') { serverState = msg; renderSetProgress(msg); renderNext(); resetReady(); populateGotoDropdown(msg.setList); renderHealthBanner(msg.unmatchedScenes); return; }
       if (msg.type === 'readyState') { renderReadyState(msg.players || []); return; }
     } catch(err) { console.error('WS:', err); }
   };
@@ -975,6 +1001,43 @@ function renderReadyState(players) {
   el.readyCount.style.display = total > 0 ? 'inline' : 'none';
   el.readyCount.textContent = readyCount + '/' + total;
   el.readyPanel.innerHTML = panelHtml;
+}
+
+
+// ---------- Set Progress ----------
+function fmtDuration(secs) {
+  if (!secs || secs <= 0) return '0:00';
+  var h = Math.floor(secs / 3600);
+  var m = Math.floor((secs % 3600) / 60);
+  var s = Math.floor(secs % 60);
+  if (h > 0) return h + ':' + (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+  return m + ':' + (s < 10 ? '0' : '') + s;
+}
+
+function renderSetProgress(state) {
+  var el = document.getElementById('setProgress');
+  if (!el || !state || !state.songDurations) return;
+
+  var durations = state.songDurations || [];
+  var total = state.totalSetSeconds || 0;
+  var pointer = state.songPointer || 0;
+
+  var songCount = 0; var currentSongNum = 0;
+  var elapsed = 0;
+  for (var i = 0; i < durations.length; i++) {
+    var isDivider = state.setList && typeof state.setList[i] === 'object';
+    if (!isDivider) songCount++;
+    if (i < pointer) elapsed += durations[i];
+    if (i === pointer && !isDivider) currentSongNum = songCount;
+  }
+
+  if (total <= 0 || songCount === 0) { el.classList.remove('visible'); return; }
+  el.classList.add('visible');
+
+  var pct = Math.min(100, Math.round((elapsed / total) * 100));
+  document.getElementById('setProgressText').textContent = 'Song ' + currentSongNum + ' of ' + songCount;
+  document.getElementById('setProgressFill').style.width = pct + '%';
+  document.getElementById('setProgressTime').textContent = fmtDuration(elapsed) + ' / ' + fmtDuration(total);
 }
 
 // ---------- Visual Metronome ----------
