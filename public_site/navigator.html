@@ -227,6 +227,38 @@
       height: 100%; background: var(--accent, #e94560);
       border-radius: 2px; transition: width 0.5s;
     }
+    
+    /* === TRACK TOGGLES === */
+    .track-toggles {
+      display: flex; gap: 8px; padding: 6px 16px;
+      justify-content: center;
+      background: var(--bg-strip, #0a0a12);
+      border-top: 1px solid #1a1a2e;
+    }
+    .track-btn {
+      flex: 1; max-width: 160px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 2px solid #2a2a3a;
+      background: #14141f;
+      color: var(--text-dim, #6a6a85);
+      font-size: 13px; font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.2s;
+      touch-action: manipulation;
+    }
+    .track-btn.active {
+      border-color: #4ecca3;
+      background: rgba(78, 204, 163, 0.15);
+      color: #4ecca3;
+    }
+    .track-btn.active.warn {
+      border-color: #f5a623;
+      background: rgba(245, 166, 35, 0.15);
+      color: #f5a623;
+    }
+    .track-btn:active { transform: scale(0.95); }
     .ctrl-btn {
       touch-action: manipulation;
       width: 64px; height: 64px;
@@ -457,6 +489,12 @@
     <button class="ctrl-btn stop" id="btnStop" title="Stop">■</button>
     <button class="ctrl-btn play" id="btnPlay" title="Play">▶</button>
     <button class="ctrl-btn" id="btnNext" title="Next">⏭</button>
+  </div>
+
+  <!-- Track toggles -->
+  <div class="track-toggles">
+    <button class="track-btn" id="trackOriginal" data-track="Original">🎧 Original</button>
+    <button class="track-btn" id="trackBT" data-track="BT">🔊 Backing</button>
   </div>
 
   <!-- Set progress -->
@@ -742,6 +780,53 @@ function renderHealthBanner(unmatched) {
   list.innerHTML = unmatched.map(function(s) { return "<li>" + s + "</li>"; }).join("");
 }
 
+
+
+// ---------- Track toggles ----------
+var trackState = { "Original": null, "BT": null };
+
+function renderTrackButtons() {
+  var btnOrig = document.getElementById('trackOriginal');
+  var btnBT = document.getElementById('trackBT');
+  if (btnOrig) {
+    btnOrig.classList.toggle('active', trackState["Original"] === true);
+    btnOrig.classList.remove('warn');
+  }
+  if (btnBT) {
+    btnBT.classList.toggle('active', trackState["BT"] === true);
+    btnBT.classList.toggle('warn', trackState["BT"] === true);
+  }
+}
+
+document.getElementById('trackOriginal').addEventListener('click', function() {
+  sendCommand('toggle_track', { track: 'Original' });
+});
+document.getElementById('trackBT').addEventListener('click', function() {
+  sendCommand('toggle_track', { track: 'BT' });
+});
+
+// ---------- Keyboard shortcuts ----------
+document.addEventListener('keydown', function(e) {
+  // Ignore if typing in an input field
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+
+  switch (e.key) {
+    case 'ArrowRight':
+      e.preventDefault();
+      sendCommand('next');
+      break;
+    case 'ArrowLeft':
+      e.preventDefault();
+      sendCommand('prev');
+      break;
+    case 'Enter':
+    case ' ':
+      e.preventDefault();
+      sendCommand(transportState === 'playing' ? 'stop' : 'play');
+      break;
+  }
+});
+
 function connectWebSocket() {
   ws = new WebSocket(WS_URL);
 
@@ -773,6 +858,13 @@ function connectWebSocket() {
         return;
       }
 
+      if (msg.type === 'tracks') {
+        if (msg.tracks) {
+          for (var tk in msg.tracks) trackState[tk] = msg.tracks[tk];
+          renderTrackButtons();
+        }
+        return;
+      }
       if (msg.type === 'transport') {
         transportState = msg.state || 'stopped';
         if (msg.tempo && msg.tempo > 0 && currentSongMeta) startMetronome(msg.tempo);
@@ -819,8 +911,8 @@ function sendRegister() {
   if (playerName) wsSend({ type: 'register', name: playerName });
 }
 
-function sendCommand(action) {
-  wsSend({ type: 'command', action: action });
+function sendCommand(action, extra) {
+  var msg = { type: 'command', action: action }; if (extra) { for (var k in extra) msg[k] = extra[k]; } wsSend(msg);
 }
 
 // ---------- Controls ----------

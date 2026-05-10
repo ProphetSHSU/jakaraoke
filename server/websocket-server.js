@@ -54,6 +54,7 @@ var setListName = null;      // name of the active setlist (null = "All Songs")
 var songPointer = -1;
 var songDurations = {};
 var currentSongPayload = null;
+var lastTrackPayload = null;
 var unmatchedScenes = []; // scenes with no matching song file // cached last-sent song payload (for late-joiner sync)      // filename → durationSeconds (parsed from metadata)
 
 // ============================================================
@@ -475,6 +476,7 @@ wsServer.on('request', function(request) {
     connection.sendUTF(JSON.stringify(getTransportPayload()));
     connection.sendUTF(JSON.stringify(additions.getReadyStatePayload()));
     if (currentSongPayload) connection.sendUTF(currentSongPayload);
+    if (lastTrackPayload) connection.sendUTF(lastTrackPayload);
 
     connection.on('message', function(message) {
       console.log('Received Message:', message.utf8Data);
@@ -889,6 +891,16 @@ udpBridge.start({
         // data: { type:"scene", index, name, count }
         loadSongBySceneName(data.name, data.index, data.count);
     },
+    onTracks: function(data) {
+        // data: { type:"tracks", tracks: { "Original": true/false, "BT": true/false } }
+        console.log("UDP: track mutes -", JSON.stringify(data.tracks));
+        var payload = JSON.stringify(data);
+        for (var i = 0; i < remoteConnection.length; i++) {
+            remoteConnection[i].sendUTF(payload);
+        }
+        // Cache for late-joiners
+        lastTrackPayload = payload;
+    },
     onTransport: function(data) {
         // data: { type:"transport", state:"playing"|"stopped", tempo, time_sig }
         if (data.state === "playing" && transport.state !== "playing") {
@@ -962,7 +974,7 @@ udpBridge.start({
 // Scene change will come back via UDP observer and trigger loadSongBySceneName.
 additions.handleCommand = function(parsed, fns, playerName) {
     if (parsed.action) {
-        var cmd = { type: "command", action: parsed.action }; if (parsed.index !== undefined) cmd.index = parsed.index; udpBridge.sendCommand(cmd);
+        var cmd = { type: "command", action: parsed.action }; if (parsed.index !== undefined) cmd.index = parsed.index; if (parsed.track) cmd.track = parsed.track; udpBridge.sendCommand(cmd);
         console.log("UDP: relayed " + parsed.action + " from " + (playerName || "unknown"));
 
         // Also update server transport state immediately (don't rely solely on M4L round-trip)

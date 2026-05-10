@@ -48,6 +48,9 @@ function start(opts) {
         case 'scenes':
           if (handlers.onScenes) handlers.onScenes(data);
           break;
+        case 'tracks':
+          if (handlers.onTracks) handlers.onTracks(data);
+          break;
         default:
           console.log('UDP: unknown message type: ' + data.type);
       }
