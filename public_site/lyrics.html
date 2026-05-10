@@ -470,16 +470,50 @@
     .edit-btn:active { background: #2a2a3a; }
     .edit-btn.active { border-color: var(--warning); color: var(--warning); background: rgba(255,217,61,0.1); }
 
+    
+    /* === EDITOR INSERT TOOLBAR === */
+    .editor-insert-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 8px 0;
+      margin-bottom: 4px;
+    }
+    .editor-insert-bar .row-label {
+      width: 100%;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+      margin-top: 4px;
+    }
+    .editor-insert-bar .row-label:first-child { margin-top: 0; }
+    .ins-btn {
+      touch-action: manipulation;
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: 1px solid #2a2a3a;
+      background: #14141f;
+      color: var(--text-mid);
+      font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.1s;
+      -webkit-tap-highlight-color: transparent;
+      white-space: nowrap;
+    }
+    .ins-btn:active { background: #2a2a3a; border-color: var(--accent-song); color: var(--text); }
+
     .editor-container {
       display: none;
       position: relative;
-      padding: 8px 12px 80px;
+      padding: 8px 12px 90px;
     }
     .editor-container.visible { display: block; }
 
     .editor-textarea {
       width: 100%;
-      min-height: calc(100vh - 140px);
+      min-height: calc(100vh - 250px);
       background: #0e0e16;
       color: #c8c8d8;
       border: 1px solid #2a2a3a;
@@ -590,6 +624,23 @@
 
   <!-- Editor -->
   <div class="editor-container" id="editorContainer">
+    <div class="editor-insert-bar" id="editorInsertBar">
+      <div class="row-label">Insert</div>
+      <button class="ins-btn" data-ins="chord" title="Insert chord">[chord]</button>
+      <button class="ins-btn" data-ins="comment" title="Insert comment">{comment:}</button>
+      <button class="ins-btn" data-ins="highlight" title="Insert highlight">&gt;highlight&lt;</button>
+      <button class="ins-btn" data-ins="bar" title="Insert bar marker">{bar:N}</button>
+      <button class="ins-btn" data-ins="d_time" title="Insert time marker">{d_time:N}</button>
+      <button class="ins-btn" data-ins="bpb" title="Beats per bar">{bpb:N}</button>
+      <button class="ins-btn" data-ins="pause" title="Insert pause">{pause}</button>
+      <div class="row-label">Metadata</div>
+      <button class="ins-btn" data-ins="title" title="Song title">{title:}</button>
+      <button class="ins-btn" data-ins="artist" title="Artist">{artist:}</button>
+      <button class="ins-btn" data-ins="key" title="Song key">{key:}</button>
+      <button class="ins-btn" data-ins="tempo" title="Tempo BPM">{tempo:}</button>
+      <button class="ins-btn" data-ins="duration" title="Duration mm:ss">{duration:}</button>
+      <button class="ins-btn" data-ins="color" title="Color R/G/B/Y/C/P">{color:}</button>
+    </div>
     <textarea class="editor-textarea" id="editorTextarea" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
     <div class="editor-toolbar" id="editorToolbar">
       <span class="info" id="editorInfo">Editing: —</span>
@@ -1562,6 +1613,68 @@ document.body.addEventListener('dblclick', function() {
 
   // Handle save result
   // (patched into ws.onmessage below)
+
+  // ========== INSERT TOOLBAR ==========
+  var INSERT_TEMPLATES = {
+    chord:     { wrap: ['[', ']'], placeholder: 'Am' },
+    comment:   { line: '{comment:__}', placeholder: 'text' },
+    highlight: { wrap: ['>', '<'], placeholder: 'text' },
+    bar:       { line: '{bar:__}', placeholder: '1' },
+    d_time:    { line: '{d_time:__}', placeholder: '0' },
+    bpb:       { line: '{bpb:__}', placeholder: '4' },
+    pause:     { line: '{pause}', placeholder: null },
+    title:     { line: '{title:__}', placeholder: 'Song Title' },
+    artist:    { line: '{artist:__}', placeholder: 'Artist Name' },
+    key:       { line: '{key:__}', placeholder: 'C' },
+    tempo:     { line: '{tempo:__}', placeholder: '120' },
+    duration:  { line: '{duration:__}', placeholder: '3:30' },
+    color:     { line: '{color:__}', placeholder: 'R' }
+  };
+
+  document.getElementById('editorInsertBar').addEventListener('click', function(e) {
+    var btn = e.target.closest('.ins-btn');
+    if (!btn) return;
+    var key = btn.getAttribute('data-ins');
+    var tmpl = INSERT_TEMPLATES[key];
+    if (!tmpl) return;
+
+    var ta = elEdit.textarea;
+    var start = ta.selectionStart;
+    var end = ta.selectionEnd;
+    var val = ta.value;
+    var selected = val.substring(start, end);
+
+    var insertText, selectStart, selectEnd;
+
+    if (tmpl.wrap) {
+      // Wrap selection (or placeholder) with prefix/suffix
+      var inner = selected || tmpl.placeholder;
+      insertText = tmpl.wrap[0] + inner + tmpl.wrap[1];
+      selectStart = start + tmpl.wrap[0].length;
+      selectEnd = selectStart + inner.length;
+    } else if (tmpl.line) {
+      // Insert directive line — if cursor is mid-line, add newline before
+      var before = val.substring(0, start);
+      var needNewlineBefore = before.length > 0 && before[before.length - 1] !== '\n';
+      var prefix = needNewlineBefore ? '\n' : '';
+
+      if (tmpl.placeholder) {
+        insertText = prefix + tmpl.line.replace('__', tmpl.placeholder);
+        var tagStart = prefix.length + tmpl.line.indexOf('__');
+        selectStart = start + tagStart;
+        selectEnd = selectStart + tmpl.placeholder.length;
+      } else {
+        insertText = prefix + tmpl.line;
+        selectStart = start + insertText.length;
+        selectEnd = selectStart;
+      }
+    }
+
+    // Replace selection with inserted text
+    ta.setRangeText(insertText, start, end, 'select');
+    ta.focus();
+    ta.setSelectionRange(selectStart, selectEnd);
+  });
 
 </script>
 </body>
