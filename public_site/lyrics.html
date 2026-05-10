@@ -131,6 +131,37 @@
     }
     .settings-btn:active { background: #2a2a3a; }
 
+    
+    .track-toggles-settings {
+      display: flex; gap: 8px; padding: 12px 0 4px;
+      justify-content: center;
+      border-top: 1px solid #1a1a2e;
+      margin-top: 8px;
+    }
+    .track-btn {
+      flex: 1;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 2px solid #2a2a3a;
+      background: #14141f;
+      color: var(--text-dim, #6a6a85);
+      font-size: 13px; font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.2s;
+      touch-action: manipulation;
+    }
+    .track-btn.active {
+      border-color: #4ecca3;
+      background: rgba(78, 204, 163, 0.15);
+      color: #4ecca3;
+    }
+    .track-btn.active.warn {
+      border-color: #f5a623;
+      background: rgba(245, 166, 35, 0.15);
+      color: #f5a623;
+    }
+    .track-btn:active { transform: scale(0.95); }
     .settings-overlay {
       display: none;
       position: fixed; top: 0; left: 0; right: 0; bottom: 0;
@@ -528,6 +559,11 @@
           <span class="range-val" id="settingTargetVal">33%</span>
         </div>
       </div>
+
+      <div class="track-toggles-settings">
+        <button class="track-btn" id="trackOriginal" data-track="Original">🎧 Original</button>
+        <button class="track-btn" id="trackBT" data-track="BT">🔊 Backing</button>
+      </div>
     </div>
   </div>
 
@@ -802,6 +838,7 @@ function connectWebSocket() {
       if (msg.command === 0 && msg.song) { handleSong(msg); return; }
       if (msg.command === 0 && msg.setBreak) { handleSetBreak(msg.setNumber); return; }
       if (msg.command === 144) { /* beat pulse — could flash header border */ return; }
+      if (msg.type === 'tracks') { if (msg.tracks) { for (var tk in msg.tracks) trackState[tk] = msg.tracks[tk]; renderTrackButtons(); } return; }
       if (msg.type === 'playhead') { handlePlayhead(msg); return; }
       if (msg.type === 'transport') { handleTransport(msg); return; }
       if (msg.type === 'state') { serverState = msg; renderSetProgress(msg); renderNext(); resetReady(); populateGotoDropdown(msg.setList); renderHealthBanner(msg.unmatchedScenes); return; }
@@ -1029,6 +1066,30 @@ function renderReadyState(players) {
   el.readyPanel.innerHTML = panelHtml;
 }
 
+
+
+// ---------- Track toggles ----------
+var trackState = { "Original": null, "BT": null };
+
+function renderTrackButtons() {
+  var btnOrig = document.getElementById('trackOriginal');
+  var btnBT = document.getElementById('trackBT');
+  if (btnOrig) {
+    btnOrig.classList.toggle('active', trackState["Original"] === true);
+    btnOrig.classList.remove('warn');
+  }
+  if (btnBT) {
+    btnBT.classList.toggle('active', trackState["BT"] === true);
+    btnBT.classList.toggle('warn', trackState["BT"] === true);
+  }
+}
+
+document.getElementById('trackOriginal').addEventListener('click', function() {
+  wsSend({ type: 'command', action: 'toggle_track', track: 'Original' });
+});
+document.getElementById('trackBT').addEventListener('click', function() {
+  wsSend({ type: 'command', action: 'toggle_track', track: 'BT' });
+});
 
 // ---------- Set Progress ----------
 function fmtDuration(secs) {
