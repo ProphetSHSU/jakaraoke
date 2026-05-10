@@ -1531,6 +1531,7 @@ document.body.addEventListener('dblclick', function() {
       elEdit.save.disabled = false;
       elEdit.save.textContent = 'Save';
       elEdit.save.classList.remove('saving');
+      el.readyBadge.style.display = "none";
       // Scroll to top of editor
       window.scrollTo(0, 0);
     } else {
@@ -1542,7 +1543,8 @@ document.body.addEventListener('dblclick', function() {
     editorActive = false;
     elEdit.container.classList.remove('visible');
     elEdit.btn.classList.remove('active');
-    el.songContent.style.display = '';
+    el.songContent.style.display = "";
+    el.readyBadge.style.display = "";
   }
 
   function saveEditor() {
