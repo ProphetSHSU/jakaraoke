@@ -824,7 +824,7 @@ function sendCommand(action) {
 }
 
 // ---------- Controls ----------
-el.btnPlay.addEventListener('click', function() { sendCommand('play'); });
+el.btnPlay.addEventListener('click', function() { sendCommand(transportState === 'playing' ? 'stop' : 'play'); });
 el.btnStop.addEventListener('click', function() { sendCommand('stop'); });
 el.btnNext.addEventListener('click', function() { sendCommand('next'); });
 el.btnPrev.addEventListener('click', function() { sendCommand('prev'); });

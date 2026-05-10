@@ -52,7 +52,7 @@
       padding: 6px 16px;
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 6px;
       min-height: 42px;
       transition: border-color 0.3s;
     }
@@ -437,10 +437,7 @@
       <button class="hdr-btn play" id="btnPlay" title="Play">▶</button>
       <button class="hdr-btn" id="btnNext" title="Next" style="font-size:12px;">⏭</button>
     </div>
-    <div class="hdr-spacer"></div>
-    <select class="hdr-goto" id="gotoSelect"><option value="">— jump to song —</option></select>
-    <div class="hdr-spacer"></div>
-    <!-- hdr-next hidden, replaced by goto dropdown -->
+    <select class="hdr-goto" id="gotoSelect" style="flex:1;min-width:0;"><option value="">— jump —</option></select>
     <div class="hdr-next" id="hdrNext" style="display:none;">
       <span class="label">NEXT:</span>
       <span class="name" id="nextName">—</span>
@@ -704,7 +701,7 @@ el.readyBadge.addEventListener('dblclick', function(e) {
 });
 
 // ---------- Transport controls ----------
-el.btnPlay.addEventListener('click', function() { wsSend({ type: 'command', action: 'play' }); });
+el.btnPlay.addEventListener('click', function() { var act = transportState === 'playing' ? 'stop' : 'play'; wsSend({ type: 'command', action: act }); });
 el.btnNext.addEventListener("click", function() { wsSend({ type: "command", action: "next" }); });
 // Goto dropdown
 el.gotoSelect = document.getElementById("gotoSelect");
@@ -1001,6 +998,7 @@ function handleTransport(msg) {
   } else {
     scrollState.elapsedOffset = 0;
     scrollState.playStartedAt = null;
+    scrollState.userOffset = 0;
     stopScrollLoop();
     showTargetLine(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1279,16 +1277,26 @@ function handlePlayhead(msg) {
 
 // User touch detection for manual scroll offset
 (function() {
+  var touchSettleTimer = null;
+
   document.addEventListener('touchstart', function() {
     scrollState.userTouching = true;
+    if (touchSettleTimer) { clearTimeout(touchSettleTimer); touchSettleTimer = null; }
   }, { passive: true });
 
   document.addEventListener('touchend', function() {
-    scrollState.userTouching = false;
-    // Capture offset: difference between where user left it and where auto would put it
-    if (transportState === 'playing') {
-      scrollState.userOffset = window.scrollY - scrollState.lastAutoY + scrollState.userOffset;
-    }
+    // Delay resuming programmatic scroll to let momentum scrolling settle
+    if (touchSettleTimer) clearTimeout(touchSettleTimer);
+    touchSettleTimer = setTimeout(function() {
+      // Compute where auto-scroll WOULD be right now (fresh, not stale)
+      if (transportState === 'playing') {
+        var autoY = getTargetPixelY();
+        var autoScrollY = Math.max(0, autoY - window.innerHeight * scrollState.targetRatio);
+        scrollState.userOffset = window.scrollY - autoScrollY;
+      }
+      scrollState.userTouching = false;
+      touchSettleTimer = null;
+    }, 500);
   }, { passive: true });
 })();
 
