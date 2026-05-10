@@ -143,6 +143,73 @@
       border-top: 1px solid #1e1e2e;
     }
 
+    
+    /* === METRONOME === */
+    .metronome {
+      display: flex; gap: 5px; align-items: center;
+    }
+    .metro-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: #2a2a3a;
+      transition: background 0.08s;
+    }
+    .metro-dot.lit { background: var(--accent, #e94560); }
+
+    /* === SETTINGS === */
+    .settings-btn {
+      width: 30px; height: 30px;
+      border-radius: 6px; border: 1px solid #2a2a3a;
+      background: #14141f; color: var(--text-dim, #6a6a85);
+      font-size: 18px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; flex-shrink: 0;
+      touch-action: manipulation;
+    }
+    .settings-btn:active { background: #2a2a3a; }
+    .settings-overlay {
+      display: none;
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      z-index: 100;
+      background: rgba(0,0,0,0.7);
+    }
+    .settings-overlay.open { display: flex; align-items: flex-start; justify-content: center; padding-top: 60px; }
+    .settings-card {
+      background: #14141f;
+      border: 1px solid #2a2a3a;
+      border-radius: 12px;
+      padding: 20px;
+      width: 90%; max-width: 340px;
+      color: var(--text, #fff);
+    }
+    .settings-card h2 {
+      margin: 0 0 16px; font-size: 18px; font-weight: 600;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .settings-card .close-btn {
+      background: none; border: none; color: var(--text-dim, #6a6a85); font-size: 22px; cursor: pointer;
+    }
+    .setting-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 0; border-bottom: 1px solid #1a1a2e;
+    }
+    .setting-row:last-child { border-bottom: none; }
+    .setting-label { font-size: 14px; color: var(--text-dim, #a8a8c0); }
+    .setting-control { display: flex; align-items: center; gap: 8px; }
+    .setting-control input[type="text"] {
+      background: #0a0a12; border: 1px solid #2a2a3a; border-radius: 6px;
+      color: var(--text, #fff); padding: 6px 10px; font-size: 14px; width: 140px;
+    }
+    .toggle-track {
+      width: 44px; height: 24px; border-radius: 12px;
+      background: #2a2a3a; position: relative; cursor: pointer; transition: background 0.2s;
+    }
+    .toggle-track.on { background: var(--accent, #e94560); }
+    .toggle-knob {
+      width: 20px; height: 20px; border-radius: 50%;
+      background: #fff; position: absolute; top: 2px; left: 2px; transition: left 0.2s;
+    }
+    .toggle-track.on .toggle-knob { left: 22px; }
     .ctrl-btn {
       touch-action: manipulation;
       width: 64px; height: 64px;
@@ -302,6 +369,21 @@
       color: var(--danger);
       font-style: italic;
     }
+  
+    .health-banner {
+      display: none;
+      background: #3d2000;
+      border: 1px solid var(--warning, #f5a623);
+      border-radius: 6px;
+      padding: 8px 12px;
+      margin: 8px 16px 0;
+      font-size: 13px;
+      color: #f5a623;
+    }
+    .health-banner.visible { display: block; }
+    .health-banner summary { cursor: pointer; font-weight: 600; }
+    .health-banner ul { margin: 4px 0 0 16px; padding: 0; }
+    .health-banner li { margin: 2px 0; }
   </style>
 </head>
 <body>
@@ -322,6 +404,12 @@
     <div class="status-dot" id="statusDot"></div>
     <div class="player-name" id="playerName">—</div>
     <div class="setlist-label" id="setlistLabel">—</div>
+    <div style="flex:1;"></div>
+    <div class="metronome" id="metronome">
+      <div class="metro-dot" id="metroDot0"></div>
+      <div class="metro-dot" id="metroDot1"></div>
+    </div>
+    <button class="settings-btn" id="settingsBtn" title="Settings">⚙</button>
   </div>
 
   <!-- Song stack -->
@@ -343,7 +431,8 @@
 
 
   <!-- Full setlist (scrollable, tap to jump) -->
-  <div class="setlist-panel" id="setlistPanel"></div>
+  <div class="health-banner" id="healthBanner"><details><summary id="healthSummary"></summary><ul id="healthList"></ul></details></div>
+    <div class="setlist-panel" id="setlistPanel"></div>
 
   <!-- Transport controls -->
   <div class="controls">
@@ -357,6 +446,26 @@
   <div class="ready-bar">
     <button class="ready-btn" id="readyBtn">Ready</button>
     <div class="ready-players" id="readyPlayers"></div>
+  </div>
+
+
+  <div class="settings-overlay" id="settingsOverlay">
+    <div class="settings-card">
+      <h2>Settings <button class="close-btn" id="settingsClose">&times;</button></h2>
+      <div class="setting-row">
+        <span class="setting-label">Display Name</span>
+        <div class="setting-control">
+          <input type="text" id="settingName" placeholder="Your name" />
+        </div>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">Metronome</span>
+        <div class="setting-control">
+          <div class="toggle-track" id="settingMetronome"><div class="toggle-knob"></div></div>
+        </div>
+      </div>
+
+    </div>
   </div>
 
 <script>
@@ -447,6 +556,106 @@ checkRegistration();
 })();
 
 var ws;
+
+
+// ---------- Visual Metronome ----------
+var metronomeState = { intervalId: null, tick: 0, tempo: 0 };
+
+function startMetronome(bpm) {
+  stopMetronome();
+  if (!bpm || bpm <= 0) return;
+  if (!navPrefs.showMetronome) return;
+  metronomeState.tempo = bpm;
+  metronomeState.tick = 0;
+  updateMetronomeDots();
+  metronomeState.intervalId = setInterval(function() {
+    metronomeState.tick = 1 - metronomeState.tick;
+    updateMetronomeDots();
+  }, 60000 / bpm);
+}
+
+function stopMetronome() {
+  if (metronomeState.intervalId) { clearInterval(metronomeState.intervalId); metronomeState.intervalId = null; }
+  metronomeState.tick = 0;
+  var d0 = document.getElementById('metroDot0');
+  var d1 = document.getElementById('metroDot1');
+  if (d0) d0.classList.remove('lit');
+  if (d1) d1.classList.remove('lit');
+}
+
+function updateMetronomeDots() {
+  var d0 = document.getElementById('metroDot0');
+  var d1 = document.getElementById('metroDot1');
+  if (d0) d0.classList.toggle('lit', metronomeState.tick === 0);
+  if (d1) d1.classList.toggle('lit', metronomeState.tick === 1);
+}
+
+// ---------- Navigator Preferences ----------
+var navPrefs = {
+  showMetronome: localStorage.getItem('nav_show_metronome') !== 'false',
+};
+
+function applyNavPrefs() {
+  document.getElementById('metronome').style.display = navPrefs.showMetronome ? 'flex' : 'none';
+}
+applyNavPrefs();
+
+// ---------- Settings panel ----------
+(function() {
+  var overlay = document.getElementById('settingsOverlay');
+  var btnOpen = document.getElementById('settingsBtn');
+  var btnClose = document.getElementById('settingsClose');
+  var nameInput = document.getElementById('settingName');
+  var metroToggle = document.getElementById('settingMetronome');
+
+  function openSettings() {
+    nameInput.value = playerName || '';
+    metroToggle.classList.toggle('on', navPrefs.showMetronome);
+    overlay.classList.add('open');
+  }
+
+  function closeSettings() {
+    var newName = nameInput.value.trim();
+    if (newName && newName !== playerName) {
+      playerName = newName;
+      localStorage.setItem('navigator_player_name', playerName);
+      el.playerName.textContent = playerName;
+      sendRegister();
+    }
+    overlay.classList.remove('open');
+  }
+
+  btnOpen.addEventListener('click', openSettings);
+  btnClose.addEventListener('click', closeSettings);
+  overlay.addEventListener('click', function(e) { if (e.target === overlay) closeSettings(); });
+
+  metroToggle.addEventListener('click', function() {
+    navPrefs.showMetronome = !navPrefs.showMetronome;
+    metroToggle.classList.toggle('on', navPrefs.showMetronome);
+    localStorage.setItem('nav_show_metronome', String(navPrefs.showMetronome));
+    applyNavPrefs();
+    if (!navPrefs.showMetronome) stopMetronome();
+    else if (currentSongMeta && currentSongMeta.tempo) startMetronome(currentSongMeta.tempo);
+  });
+
+  detailsToggle.addEventListener('click', function() {
+    navPrefs.showDetails = !navPrefs.showDetails;
+    localStorage.setItem('nav_show_details', String(navPrefs.showDetails));
+    applyNavPrefs();
+  });
+})();
+
+function renderHealthBanner(unmatched) {
+  var banner = document.getElementById("healthBanner");
+  var summary = document.getElementById("healthSummary");
+  var list = document.getElementById("healthList");
+  if (!banner || !unmatched) { if (banner) banner.classList.remove("visible"); return; }
+  if (unmatched.length === 0) { banner.classList.remove("visible"); return; }
+  banner.classList.add("visible");
+  summary.textContent = "\u26a0\ufe0f " + unmatched.length + " scene" + (unmatched.length > 1 ? "s" : "") + " without lyrics";
+  list.innerHTML = unmatched.map(function(s) { return "<li>" + s + "</li>"; }).join("");
+}
+
 function connectWebSocket() {
   ws = new WebSocket(WS_URL);
 
@@ -470,6 +679,7 @@ function connectWebSocket() {
 
       if (msg.type === 'state') {
         serverState = msg;
+        renderHealthBanner(msg.unmatchedScenes);
         _hookUpdateDisplay(msg);
         renderSongStack();
         resetReady(); // song changed
@@ -478,18 +688,22 @@ function connectWebSocket() {
 
       if (msg.type === 'transport') {
         transportState = msg.state || 'stopped';
+        if (msg.tempo && msg.tempo > 0 && currentSongMeta) startMetronome(msg.tempo);
         renderPlayButton();
         return;
       }
 
       if (msg.command === 0 && msg.song) {
         currentSongMeta = msg.song.metadata || {};
+        if (currentSongMeta.tempo) startMetronome(currentSongMeta.tempo);
+        else stopMetronome();
         renderCurrentMeta();
         return;
       }
 
       if (msg.command === 0 && msg.setBreak === true) {
         currentSongMeta = null;
+        stopMetronome();
         renderSongStack();
         return;
       }

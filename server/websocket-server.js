@@ -53,7 +53,8 @@ var setList = [];            // the active setlist (ordered array of filenames)
 var setListName = null;      // name of the active setlist (null = "All Songs")
 var songPointer = -1;
 var songDurations = {};
-var currentSongPayload = null; // cached last-sent song payload (for late-joiner sync)      // filename → durationSeconds (parsed from metadata)
+var currentSongPayload = null;
+var unmatchedScenes = []; // scenes with no matching song file // cached last-sent song payload (for late-joiner sync)      // filename → durationSeconds (parsed from metadata)
 
 // ============================================================
 // Transport State Machine
@@ -297,7 +298,8 @@ function getStatePayload() {
         setList: clientSetList,
         songPointer: songPointer,
         songDurations: durations,
-        totalSetSeconds: totalSeconds
+        totalSetSeconds: totalSeconds,
+        unmatchedScenes: unmatchedScenes
     };
 }
 
@@ -918,6 +920,7 @@ udpBridge.start({
 
         // Rebuild setList from Ableton scenes (replaces Dropbox-derived list)
         var newSetList = [];
+        unmatchedScenes = [];
         var parkingLot = false;
         for (var i = 0; i < data.scenes.length; i++) {
             var name = data.scenes[i];
@@ -942,6 +945,7 @@ udpBridge.start({
             } else {
                 // No match — include scene name as-is (will show no lyrics)
                 newSetList.push(name);
+                unmatchedScenes.push(name);
             }
         }
 
