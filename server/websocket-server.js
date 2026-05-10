@@ -964,6 +964,22 @@ additions.handleCommand = function(parsed, fns, playerName) {
     if (parsed.action) {
         var cmd = { type: "command", action: parsed.action }; if (parsed.index !== undefined) cmd.index = parsed.index; udpBridge.sendCommand(cmd);
         console.log("UDP: relayed " + parsed.action + " from " + (playerName || "unknown"));
+
+        // Also update server transport state immediately (don't rely solely on M4L round-trip)
+        if (parsed.action === 'play') {
+            if (transport.state !== 'playing') {
+                transport.playStartedAt = Date.now();
+                transport.state = 'playing';
+                broadcastTransport();
+            }
+        } else if (parsed.action === 'stop') {
+            if (transport.state !== 'stopped') {
+                transport.state = 'stopped';
+                transport.elapsedAtPause = 0;
+                transport.playStartedAt = null;
+                broadcastTransport();
+            }
+        }
     }
 };
 
