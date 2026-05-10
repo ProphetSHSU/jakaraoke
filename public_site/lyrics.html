@@ -523,6 +523,14 @@
           <div class="toggle-track" id="settingMetronome"><div class="toggle-knob"></div></div>
         </div>
       </div>
+
+      <div class="setting-row">
+        <span class="setting-label">Scroll Target Line</span>
+        <div class="setting-control">
+          <input type="range" id="settingTargetLine" min="15" max="50" step="1" />
+          <span class="range-val" id="settingTargetVal">33%</span>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -607,11 +615,16 @@ if (!playerName) {
   var sectionToggle = document.getElementById('settingSections');
   var metroToggle = document.getElementById('settingMetronome');
 
+  var targetSlider = document.getElementById('settingTargetLine');
+  var targetVal = document.getElementById('settingTargetVal');
+
   function openSettings() {
     // Populate current values
     nameInput.value = playerName || '';
     fontSlider.value = Math.round(fontScale * 100);
     fontVal.textContent = Math.round(fontScale * 100) + '%';
+    targetSlider.value = Math.round(scrollState.targetRatio * 100);
+    targetVal.textContent = Math.round(scrollState.targetRatio * 100) + '%';
     chordToggle.classList.toggle('on', prefs.showChords);
     sectionToggle.classList.toggle('on', prefs.showSections);
     metroToggle.classList.toggle('on', prefs.showMetronome);
@@ -662,6 +675,14 @@ if (!playerName) {
   wireToggle(metroToggle, 'showMetronome', function() {
     if (!prefs.showMetronome) stopMetronome();
     else if (currentSongMeta && currentSongMeta.tempo) startMetronome(currentSongMeta.tempo);
+  });
+
+  targetSlider.addEventListener('input', function() {
+    var val = parseInt(this.value, 10) / 100;
+    scrollState.targetRatio = val;
+    targetVal.textContent = this.value + '%';
+    localStorage.setItem('lyrics_target_ratio', val.toFixed(2));
+    showTargetLine(true);
   });
 })();
 
@@ -820,7 +841,14 @@ function handleSong(msg) {
   stopScrollLoop();
   showTargetLine(false);
   window.scrollTo(0, 0);
-  requestAnimationFrame(function() { buildAnchors(song); });
+  requestAnimationFrame(function() {
+    buildAnchors(song);
+    // If transport is already playing (e.g. late-joiner reconnect), resume scrolling
+    if (transportState === 'playing' && scrollState.playStartedAt !== null) {
+      startScrollLoop();
+      showTargetLine(true);
+    }
+  });
 }
 
 function handleSetBreak(setNumber) {
@@ -1099,7 +1127,7 @@ var scrollState = {
 
   // Engine
   rafId: null,
-  targetRatio: 0.33   // "now" line at 33% from top
+  targetRatio: parseFloat(localStorage.getItem('lyrics_target_ratio') || '0.33')
 };
 
 function buildAnchors(song) {
