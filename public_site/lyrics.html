@@ -454,6 +454,93 @@
     .health-banner summary { cursor: pointer; font-weight: 600; }
     .health-banner ul { margin: 4px 0 0 16px; padding: 0; }
     .health-banner li { margin: 2px 0; }
+  
+    /* === EDITOR === */
+    .edit-btn {
+      touch-action: manipulation;
+      width: 32px; height: 32px;
+      border-radius: 8px; border: 1.5px solid var(--text-dim);
+      background: transparent; color: var(--text-dim);
+      font-size: 16px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; transition: all 0.12s;
+      -webkit-tap-highlight-color: transparent;
+      flex-shrink: 0;
+    }
+    .edit-btn:active { background: #2a2a3a; }
+    .edit-btn.active { border-color: var(--warning); color: var(--warning); background: rgba(255,217,61,0.1); }
+
+    .editor-container {
+      display: none;
+      position: relative;
+      padding: 8px 12px 80px;
+    }
+    .editor-container.visible { display: block; }
+
+    .editor-textarea {
+      width: 100%;
+      min-height: calc(100vh - 140px);
+      background: #0e0e16;
+      color: #c8c8d8;
+      border: 1px solid #2a2a3a;
+      border-radius: 8px;
+      padding: 16px;
+      font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      font-size: 15px;
+      line-height: 1.5;
+      resize: vertical;
+      outline: none;
+      -webkit-user-select: text;
+      user-select: text;
+    }
+    .editor-textarea:focus { border-color: var(--accent-song); }
+
+    .editor-toolbar {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      z-index: 30;
+      background: var(--bg-header);
+      border-top: 2px solid var(--accent-song);
+      padding: 12px 16px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      justify-content: flex-end;
+    }
+    .editor-toolbar .info {
+      flex: 1;
+      font-size: 13px;
+      color: var(--text-dim);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .editor-toolbar button {
+      touch-action: manipulation;
+      padding: 8px 20px;
+      border-radius: 8px;
+      border: none;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.12s;
+    }
+    .editor-toolbar .cancel-btn {
+      background: #2a2a3a;
+      color: var(--text-mid);
+    }
+    .editor-toolbar .save-btn {
+      background: var(--ready-green);
+      color: #0a0a0a;
+    }
+    .editor-toolbar .save-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    .editor-toolbar .save-btn.saving {
+      background: var(--warning);
+    }
+  
   </style>
 </head>
 <body>
@@ -477,6 +564,7 @@
       <div class="metro-dot" id="metroDot0"></div>
       <div class="metro-dot" id="metroDot1"></div>
     </div>
+    <button class="edit-btn" id="editBtn" title="Edit ChordPro">✏️</button>
     <button class="settings-btn" id="settingsBtn" title="Settings">⚙</button>
   </div>
 
@@ -500,7 +588,17 @@
     </div>
   </div>
 
-  <!-- Ready badge (floating) -->
+  <!-- Editor -->
+  <div class="editor-container" id="editorContainer">
+    <textarea class="editor-textarea" id="editorTextarea" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
+    <div class="editor-toolbar" id="editorToolbar">
+      <span class="info" id="editorInfo">Editing: —</span>
+      <button class="cancel-btn" id="editorCancel">Cancel</button>
+      <button class="save-btn" id="editorSave">Save</button>
+    </div>
+  </div>
+
+    <!-- Ready badge (floating) -->
   <div class="ready-badge" id="readyBadge">
     <div class="ready-dot"></div>
     <span class="ready-label" id="readyLabel">Ready</span>
@@ -842,7 +940,18 @@ function connectWebSocket() {
       if (msg.type === 'playhead') { handlePlayhead(msg); return; }
       if (msg.type === 'transport') { handleTransport(msg); return; }
       if (msg.type === 'state') { serverState = msg; renderSetProgress(msg); renderNext(); resetReady(); populateGotoDropdown(msg.setList); renderHealthBanner(msg.unmatchedScenes); return; }
-      if (msg.type === 'readyState') { renderReadyState(msg.players || []); return; }
+      if (msg.type === 'save_result') {
+        if (msg.ok) {
+          console.log('Song saved successfully');
+        } else {
+          alert('Save failed: ' + (msg.error || 'unknown error'));
+          elEdit.save.disabled = false;
+          elEdit.save.textContent = 'Save';
+          elEdit.save.classList.remove('saving');
+        }
+        return;
+      }
+            if (msg.type === 'readyState') { renderReadyState(msg.players || []); return; }
     } catch(err) { console.error('WS:', err); }
   };
 }
@@ -856,6 +965,12 @@ function wsSend(obj) {
 function handleSong(msg) {
   var song = msg.song;
   currentSongMeta = song.metadata || {};
+
+  // Editor: track filename and raw content
+  if (msg.filename) currentSongFilename = msg.filename;
+  if (msg.songRaw) currentSongRaw = msg.songRaw;
+  // If editor is open and this is a save-triggered re-broadcast, close editor
+  if (editorActive) closeEditor();
 
   // Accent color from song
   var c = COLOR_MAP[currentSongMeta.color] || '#e94560';
@@ -1387,6 +1502,64 @@ document.body.addEventListener('dblclick', function() {
   if (document.fullscreenElement) document.exitFullscreen();
   else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
 });
+
+
+  // ========== CHORDPRO EDITOR ==========
+  var currentSongFilename = null;
+  var currentSongRaw = '';
+  var editorActive = false;
+
+  var elEdit = {
+    btn: document.getElementById('editBtn'),
+    container: document.getElementById('editorContainer'),
+    textarea: document.getElementById('editorTextarea'),
+    toolbar: document.getElementById('editorToolbar'),
+    info: document.getElementById('editorInfo'),
+    cancel: document.getElementById('editorCancel'),
+    save: document.getElementById('editorSave')
+  };
+
+  function toggleEditor() {
+    if (!currentSongFilename) return;
+    editorActive = !editorActive;
+    if (editorActive) {
+      elEdit.textarea.value = currentSongRaw;
+      elEdit.container.classList.add('visible');
+      elEdit.btn.classList.add('active');
+      el.songContent.style.display = 'none';
+      elEdit.info.textContent = 'Editing: ' + currentSongFilename;
+      elEdit.save.disabled = false;
+      elEdit.save.textContent = 'Save';
+      elEdit.save.classList.remove('saving');
+      // Scroll to top of editor
+      window.scrollTo(0, 0);
+    } else {
+      closeEditor();
+    }
+  }
+
+  function closeEditor() {
+    editorActive = false;
+    elEdit.container.classList.remove('visible');
+    elEdit.btn.classList.remove('active');
+    el.songContent.style.display = '';
+  }
+
+  function saveEditor() {
+    if (!currentSongFilename || elEdit.save.disabled) return;
+    var content = elEdit.textarea.value;
+    elEdit.save.disabled = true;
+    elEdit.save.textContent = 'Saving...';
+    elEdit.save.classList.add('saving');
+    wsSend({ type: 'save_song', filename: currentSongFilename, content: content });
+  }
+
+  elEdit.btn.addEventListener('click', toggleEditor);
+  elEdit.cancel.addEventListener('click', function() { closeEditor(); });
+  elEdit.save.addEventListener('click', saveEditor);
+
+  // Handle save result
+  // (patched into ws.onmessage below)
 
 </script>
 </body>

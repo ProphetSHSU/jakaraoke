@@ -557,6 +557,37 @@ wsServer.on('request', function(request) {
           }, connection._playerName);
           return;
         }
+        // Save edited ChordPro content
+        if (parsed.type === 'save_song') {
+          var fn = parsed.filename;
+          var content = parsed.content;
+          if (!fn || typeof content !== 'string') {
+            connection.sendUTF(JSON.stringify({ type: 'save_result', ok: false, error: 'Missing filename or content' }));
+            return;
+          }
+          var savePath = getSongPath(fn);
+          if (!savePath) {
+            connection.sendUTF(JSON.stringify({ type: 'save_result', ok: false, error: 'No active library' }));
+            return;
+          }
+          try {
+            fs.writeFileSync(savePath, content, 'utf-8');
+            console.log('Saved song: ' + fn);
+            // Re-parse and broadcast to all clients
+            var reParsed = chordpro.parse(content);
+            var rePayload = { "command": 0, "song": reParsed, "songRaw": content, "filename": fn };
+            currentSongPayload = JSON.stringify(rePayload);
+            for (var ri = 0; ri < remoteConnection.length; ri++) {
+              remoteConnection[ri].sendUTF(currentSongPayload);
+            }
+            connection.sendUTF(JSON.stringify({ type: 'save_result', ok: true }));
+          } catch(saveErr) {
+            console.error('Save error:', saveErr);
+            connection.sendUTF(JSON.stringify({ type: 'save_result', ok: false, error: saveErr.message }));
+          }
+          return;
+        }
+
 
       } catch(e) {
         // Not JSON, treat as regular message
@@ -749,7 +780,8 @@ function sendSong(note) {
         var payload = {
             "command": 0,
             "song": parsed,
-            "songRaw": songText
+            "songRaw": songText,
+            "filename": currentItem
         }
 
         currentSongPayload = JSON.stringify(payload);
@@ -870,7 +902,7 @@ function loadSongBySceneName(sceneName, sceneIndex, sceneCount) {
             transport.tempo = parsed.metadata.tempo;
         }
 
-        var payload = { "command": 0, "song": parsed, "songRaw": songText };
+        var payload = { "command": 0, "song": parsed, "songRaw": songText, "filename": match.filename };
         currentSongPayload = JSON.stringify(payload);
         for (var i = 0; i < remoteConnection.length; i++) {
             remoteConnection[i].sendUTF(currentSongPayload);
