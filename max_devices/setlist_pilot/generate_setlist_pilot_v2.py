@@ -30,8 +30,8 @@ def build_patcher(js_filename: str, w: int, h: int) -> dict:
             "presentation": 1,
             "presentation_rect": [0, 0, w, h],
             "numinlets": 2,
-            "numoutlets": 1,
-            "outlettype": [""],
+            "numoutlets": 2,
+            "outlettype": ["", ""],
             "filename": js_filename
         }},
 
@@ -142,9 +142,12 @@ def build_patcher(js_filename: str, w: int, h: int) -> dict:
         {"patchline": {"source": ["obj-route-j", 0], "destination": ["obj-jsui", 0]}},
         {"patchline": {"source": ["obj-route-j", 0], "destination": ["obj-print-cmdin", 0]}},
 
-        # --- UDP OUT: jsui outlet 0 → udpsend + print ---
+        # --- UDP OUT: jsui outlet 0 → udpsend + print (small msgs: logged) ---
         {"patchline": {"source": ["obj-jsui", 0], "destination": ["obj-udpsend", 0]}},
         {"patchline": {"source": ["obj-jsui", 0], "destination": ["obj-print-udpout", 0]}},
+
+        # --- UDP OUT quiet: jsui outlet 1 → udpsend ONLY (big msgs: no log) ---
+        {"patchline": {"source": ["obj-jsui", 1], "destination": ["obj-udpsend", 0]}},
 
         # --- plugsync~ outlets 1 (bar int), 2 (beat int) → change → pack → jsui inlet 1 ---
         {"patchline": {"source": ["obj-plugsync", 1], "destination": ["obj-change-bar", 0]}},

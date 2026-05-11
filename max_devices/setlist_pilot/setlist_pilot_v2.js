@@ -22,7 +22,7 @@ mgraphics.relative_coords = 0;
 mgraphics.autofill = 0;
 
 inlets = 2;
-outlets = 1;
+outlets = 2;  // 0 = UDP + print; 1 = UDP only (for bulky payloads)
 
 var BUILD_TAG = "setlist_pilot v2.0.0 (2026-05-10 merged SP+SSB)";
 post("═══ " + BUILD_TAG + " LOADED ═══\n");
@@ -129,9 +129,19 @@ var TRACKED_NAMES = ["Original", "BT"];
 function udpSend(obj) {
     try {
         var json = JSON.stringify(obj);
-        outlet(0, json);
+        outlet(0, json);  // small messages — also logged via [print SP2_UDP_OUT]
         state.udpSendCount++;
     } catch (e) { post('  ERR udpSend: ' + e + '\n'); }
+}
+
+// Silent UDP send — bypasses the [print] object (outlet 1). Used for
+// bulky payloads where verbose logging would flood the Max window.
+function udpSendQuiet(obj) {
+    try {
+        var json = JSON.stringify(obj);
+        outlet(1, json);
+        state.udpSendCount++;
+    } catch (e) { post('  ERR udpSendQuiet: ' + e + '\n'); }
 }
 
 function broadcastSceneChange() {
@@ -145,10 +155,21 @@ function broadcastSceneChange() {
     });
 }
 
-function broadcastScenesList() {
+var lastBroadcastScenesKey = null;  // change-detect cache
+
+function broadcastScenesList(force) {
     var names = [];
     for (var i = 0; i < state.scenes.length; i++) names.push(state.scenes[i].name);
-    udpSend({ type: "scenes", scenes: names });
+    // Cheap change detector — skip redundant broadcasts (e.g. reload with
+    // unchanged setlist). join() with a separator unlikely to appear in names.
+    var key = names.length + '|' + names.join('\x1f');
+    if (!force && key === lastBroadcastScenesKey) {
+        post('  scenes unchanged (' + names.length + ') — skip broadcast\n');
+        return;
+    }
+    lastBroadcastScenesKey = key;
+    post('  scenes broadcast (' + names.length + ' items)\n');
+    udpSendQuiet({ type: "scenes", scenes: names });  // big payload → outlet 1
 }
 
 function broadcastTransport() {
@@ -182,7 +203,7 @@ function broadcastTrackMutes() {
 // LiveAPI — scene cache, nav
 // ===========================================================================
 
-function rebuildScenes() {
+function rebuildScenes(forceBroadcast) {
     try {
         state.scenes = [];
         var liveSet = new LiveAPI('live_set');
@@ -200,7 +221,7 @@ function rebuildScenes() {
             state.scenes.push({ index: i, name: name, isEmpty: isEmpty, id: sc.id });
         }
         post('  scene_count=' + state.scenes.length + '\n');
-        broadcastScenesList();
+        broadcastScenesList(forceBroadcast);
     } catch (e) { post('  ERR rebuildScenes: ' + e + '\n'); }
 }
 
@@ -348,6 +369,15 @@ var sceneObserver = null;
 var transportObserver = null;
 var tempoObserver = null;
 
+// Scene-list (count/add/remove) + per-scene name observers. When scenes are
+// renamed, added, deleted, or reordered in Ableton, scheduleFullRebuild()
+// debounces the cache refresh and re-broadcasts to clients. Prevents stale
+// setlists in lyrics/navigator after the user reorgs scenes mid-session.
+var sceneListObserver = null;
+var sceneNameObservers = [];  // parallel array matching state.scenes length
+var rebuildTask = null;       // Max Task for debouncing
+var observersReady = false;   // gate to ignore first-call fires during init
+
 function sceneCallback(args) {
     // Fires on ANY selected_scene change. Check if it differs from our local
     // idx (which own-driven paths already updated) — broadcast only if external.
@@ -398,7 +428,65 @@ function setupObservers() {
         tempoObserver = new LiveAPI(tempoCallback, 'live_set');
         tempoObserver.property = 'tempo';
         post('  observer: tempo ✓\n');
+
+        sceneListObserver = new LiveAPI(sceneListChangedCallback, 'live_set');
+        sceneListObserver.property = 'scenes';
+        post('  observer: scenes (count/list) ✓\n');
     } catch (e) { post('  ERR setupObservers: ' + e + '\n'); }
+}
+
+// -------- Scene-list & rename observers (auto-detect setlist reorgs) --------
+
+function scheduleFullRebuild() {
+    if (!observersReady) return;  // ignore first-call fires during init
+    if (!rebuildTask) rebuildTask = new Task(_doFullRebuild);
+    rebuildTask.cancel();
+    rebuildTask.schedule(400);  // ms — coalesces bursts (e.g. typing a rename)
+}
+
+function _doFullRebuild() {
+    try {
+        post('  scene change detected — rebuilding cache\n');
+        teardownSceneNameObservers();
+        rebuildScenes(true);  // force broadcast since something changed
+        setupSceneNameObservers();
+        refreshCurrentIdx();  // selection may have shifted after reorder
+        broadcastSceneChange();
+        mgraphics.redraw();
+    } catch (e) { post('  ERR fullRebuild: ' + e + '\n'); }
+}
+
+function teardownSceneNameObservers() {
+    for (var i = 0; i < sceneNameObservers.length; i++) {
+        try { sceneNameObservers[i].property = ''; } catch (_) {}
+    }
+    sceneNameObservers = [];
+}
+
+function setupSceneNameObservers() {
+    teardownSceneNameObservers();
+    // Close the gate: each new observer fires once on .property= with its
+    // current value. Without this guard, rebuild→setup→88 fires→another
+    // rebuild = infinite loop that tanks Max performance.
+    observersReady = false;
+    for (var i = 0; i < state.scenes.length; i++) {
+        try {
+            var obs = new LiveAPI(sceneNameChangedCallback, 'live_set scenes ' + i);
+            obs.property = 'name';
+            sceneNameObservers.push(obs);
+        } catch (e) { post('  ERR setupNameObs[' + i + ']: ' + e + '\n'); }
+    }
+    observersReady = true;
+}
+
+function sceneNameChangedCallback(args) {
+    // Fires on rename OR reorder (index→scene mapping changes).
+    scheduleFullRebuild();
+}
+
+function sceneListChangedCallback(args) {
+    // Fires on add/remove (and some reorders).
+    scheduleFullRebuild();
 }
 
 // ===========================================================================
@@ -417,8 +505,7 @@ function handleCommand(cmdStr) {
             case 'prev':    dispatch('prev_scene'); break;
             case 'refresh':
                 post('  refresh requested — re-broadcasting full state\n');
-                rebuildScenes();
-                // Force broadcast (bypass no-change via temporary dummy)
+                rebuildScenes(true);  // force scenes broadcast even if unchanged
                 broadcastSceneChange();
                 broadcastTransport();
                 broadcastTrackMutes();
@@ -466,6 +553,8 @@ function _safeInit() {
     rebuildScenes();
     refreshCurrentIdx();
     setupObservers();
+    setupSceneNameObservers();
+    observersReady = true;  // open the gate — subsequent fires trigger rebuild
 
     // Seed transport state
     try {
