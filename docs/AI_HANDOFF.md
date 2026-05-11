@@ -137,8 +137,8 @@ Switching `activeLibrary` changes song repo + scene list together (different ban
 | Component | Status |
 |---|---|
 | **Setlist Pilot v2** (merged SP + SSB) | ✅ Deployed on gigmac, fully smoke-tested |
-| Setlist Pilot v1 (standalone) | ⚪ Superseded by v2; retained on original track for rollback |
-| Set State Broadcaster v1 (standalone) | ⚪ Superseded by v2; retained on original track for rollback |
+| Setlist Pilot v1 (standalone) | 🗑 Removed 2026-05-11 (devices from .als, files from repo) |
+| Set State Broadcaster v1 (standalone) | 🗑 Removed 2026-05-11 (devices from .als, files from repo) |
 | Server (core WS + ChordPro) | ✅ Running on gigmac |
 | Server additions (slug matcher, ready-check, command relay) | ✅ Deployed |
 | Server UDP bridge | ✅ Deployed |

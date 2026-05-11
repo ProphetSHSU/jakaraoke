@@ -623,7 +623,7 @@ On gigmac: restart Ableton (RAM cache flush), then on your Setlist Pilot track:
 
 # v2 MERGE (2026-05-11) — SP + SSB collapsed into one device
 
-v2 is the canonical device going forward. v1 SP + v1 SSB on separate tracks is superseded but still loadable as a rollback.
+v2 is the canonical device. v1 SP + v1 SSB have been removed from Jake's Ableton set and from this repo (2026-05-11). Git history preserves v1 — see commit `a8c8141` and earlier.
 
 ## Why merge
 
@@ -705,8 +705,7 @@ In `jakaraoke/max_devices/setlist_pilot/`:
 - `setlist_pilot_v2.js` (23,238 bytes) — production build
 - `generate_setlist_pilot_v2.py` — regenerator (run to rebuild .amxd from JS+layout)
 
-v1 files retained alongside for rollback reference:
-- `Setlist Pilot v1.amxd`, `setlist_pilot_v1.js`, `generate_setlist_pilot_v1_1.py`, `test_setlist_pilot.js`
+v1 files removed from this directory (2026-05-11). Available in git history before commit `a8c8141`.
 
 ## Operational workflow tools adopted during v2
 
@@ -724,12 +723,13 @@ v1 files retained alongside for rollback reference:
 
 ## Rollback
 
-If v2 regresses during a gig:
-1. Remove v2 device from its track in Ableton
-2. Re-enable the v1 SP + v1 SSB devices on their original tracks (LEDs → on)
-3. No server-side change required — UDP contract identical
+v1 devices no longer loaded in the Ableton set, no longer shipped with the repo. If v2 ever regresses:
+1. `git checkout a8c8141~1 -- max_devices/setlist_pilot/` to restore v1 source
+2. Run `python3 generate_setlist_pilot_v1_1.py` to rebuild the `.amxd`
+3. Drag rebuilt v1 SP + v1 SSB onto tracks (MIDI routing per v1 deploy runbook above)
+4. No server-side change required — UDP contract identical
 
 ## v2 cleanup backlog (low priority)
 
-1. Remove v1 SP + v1 SSB from the original track after N gigs of v2 soak-test
+1. ~~Remove v1 SP + v1 SSB from the original track~~ — ✅ done 2026-05-11 (devices deleted from .als, files removed from repo).
 2. `SETLIST_PILOT_SPEC.md` planning sections (Pre-Implementation / Open Questions / Implementation Status) could be moved to an `archive/` subdir — they're historical context, not current truth
