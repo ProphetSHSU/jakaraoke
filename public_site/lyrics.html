@@ -1340,6 +1340,7 @@ var scrollState = {
   // Bar-clock state (updated by plugsync messages)
   currentBar: 0,
   currentBeat: 0,
+  playheadReceivedAt: null,  // performance.now() at last playhead msg — for inter-message extrapolation
 
   // Song metadata
   tempo: 120,
@@ -1368,6 +1369,7 @@ function buildAnchors(song) {
   scrollState.userOffset = 0;
   scrollState.currentBar = 0;
   scrollState.currentBeat = 0;
+  scrollState.playheadReceivedAt = null;
 
   var timeAnchors = [];
   var barAnchors = [];
@@ -1449,8 +1451,15 @@ function interpolateAnchors(anchors, key, value) {
 
 function getTargetPixelY() {
   if (scrollState.mode === 'bar' && scrollState.barAnchors.length > 1) {
-    // Use fractional bar for smooth inter-beat scrolling
-    var fracBar = scrollState.currentBar + (scrollState.currentBeat - 1) / scrollState.bpb;
+    // Use fractional bar for smooth inter-beat scrolling.
+    // Extrapolate forward from last playhead message using tempo — gives us
+    // a smooth ~60fps-worth of position between the sparse bar-rate playhead msgs.
+    var msgFracBar = scrollState.currentBar + (scrollState.currentBeat - 1) / scrollState.bpb;
+    var elapsedSinceMsg = scrollState.playheadReceivedAt !== null
+      ? (performance.now() - scrollState.playheadReceivedAt) / 1000
+      : 0;
+    var extraBars = elapsedSinceMsg * (scrollState.tempo / 60) / scrollState.bpb;
+    var fracBar = msgFracBar + extraBars;
     var targetY = interpolateAnchors(scrollState.barAnchors, 'bar', fracBar);
 
     // If we're past the last bar anchor, blend to time-based for the remainder
@@ -1500,6 +1509,7 @@ function scrollTick() {
 function handlePlayhead(msg) {
   scrollState.currentBar = msg.bar || 0;
   scrollState.currentBeat = msg.beat || 1;
+  scrollState.playheadReceivedAt = performance.now();
 }
 
 // User touch detection for manual scroll offset
