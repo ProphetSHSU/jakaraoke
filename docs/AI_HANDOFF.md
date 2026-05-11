@@ -1,7 +1,7 @@
 # AI Handoff — Jakaraoke
 
 > **READ THIS FIRST** if you are an AI assistant picking up this project.
-> Updated 2026-05-09. Supersedes all prior versions.
+> Updated 2026-05-11. Supersedes all prior versions.
 
 ---
 
@@ -90,19 +90,26 @@ jakaraoke/
 ## Architecture Summary
 
 ```
-FCB-1010 → TinyBox → Setlist Pilot M4L → Ableton LiveAPI
-                                              │ (single source of truth)
-                    Set State Broadcaster M4L ─┘
-                         │ UDP:9899 (state)        ▲ UDP:9900 (commands)
-                         ▼                         │
-                    jakaraoke server (port 9898) ───┘
-                         │ WebSocket (LAN Wi-Fi)
-    ┌────────────────────┼────────────────────┐
-lyrics.html        navigator.html        (any future view)
+FCB-1010 → TinyBox → Setlist Pilot v2 M4L ──→ Ableton LiveAPI (source of truth)
+                       │  (merged SP + SSB)          │
+                       │  LiveAPI observers          │
+                       ▼                             │
+                    UDP:9899 (state) ◄───────────────┘
+                       │                        ▲ UDP:9900 (commands)
+                       ▼                        │
+                    jakaraoke server (port 9898)
+                       │ WebSocket (LAN Wi-Fi)
+    ┌──────────────────┼───────────────────┐
+lyrics.html        navigator.html       (future views)
 ```
 
-All control paths (pedal, tablet buttons, direct Ableton) converge at Ableton,
-then flow through the Set State Broadcaster to all clients identically.
+As of 2026-05-11, **Setlist Pilot v2** is a single merged M4L device (jsui) that
+replaces the v1 pair (Setlist Pilot + Set State Broadcaster). Same UDP contract,
+single source of pointer truth (`state.currentIdx`), one track instead of two.
+
+All control paths (pedal, tablet buttons, direct Ableton, server UDP commands)
+converge at Ableton, then flow through v2's observers to all clients identically.
+See `SETLIST_PILOT_SPEC.md` → "v2 MERGE" section for rationale + smoke-test results.
 
 See **ECOSYSTEM.md** for detailed signal flows, config model, and design decisions.
 
@@ -125,20 +132,21 @@ Switching `activeLibrary` changes song repo + scene list together (different ban
 
 ---
 
-## Implementation Status (2026-05-09)
+## Implementation Status (2026-05-11)
 
 | Component | Status |
 |---|---|
-| Setlist Pilot M4L v1 | ✅ Deployed on gigmac |
-| Set State Broadcaster M4L | ⏭ **Next to build** |
+| **Setlist Pilot v2** (merged SP + SSB) | ✅ Deployed on gigmac, fully smoke-tested |
+| Setlist Pilot v1 (standalone) | ⚪ Superseded by v2; retained on original track for rollback |
+| Set State Broadcaster v1 (standalone) | ⚪ Superseded by v2; retained on original track for rollback |
 | Server (core WS + ChordPro) | ✅ Running on gigmac |
-| Server additions (slug matcher, ready-check, command relay) | 🔨 Staged |
-| Server UDP bridge | 🔨 Staged |
-| Startup validation (slug health) | 🔨 Staged |
+| Server additions (slug matcher, ready-check, command relay) | ✅ Deployed |
+| Server UDP bridge | ✅ Deployed |
 | Navigator view | ✅ Deployed on gigmac |
 | Lyrics view | ✅ Deployed on gigmac |
-| Late-joiner sync | ⏭ Pending |
+| Late-joiner sync | ✅ Deployed |
 | Navigator health banner | ⏭ Pending |
+| Measure-accurate scroll | ⏭ Pending (v2 now broadcasts playhead bar/beat) |
 
 ---
 
@@ -160,10 +168,12 @@ Then close + reopen Ableton (RAM cache flush required).
 
 ## Gigmac Reference
 
-- **Host:** `jake@192.168.4.119` (SSH alias `gigmac`)
+- **Host:** SSH alias `gigmac` (IP updated occasionally in `~/.ssh/config`; 10.49.5.129 as of 2026-05-11)
 - **Node:** `/usr/local/bin/node`
 - **Ableton .als:** `~/Music/Ableton/Startup/NewBand_Practice Project/NewBand_Practice_12.3.als`
 - **CloudStorage:** NOT accessible via SSH (macOS sandbox). Jake runs server from Terminal.
+- **Log capture**: `ssh gigmac pbpaste` — pulls whatever is on gigmac's macOS clipboard. Jake copies Max console text (cmd-C) → we fetch. Replaces the email-to-self loop.
+- **UDP command injection** (smoke testing without running the server): send OSC address `/j` + type `,s` + JSON arg to 127.0.0.1:9900. See `SETLIST_PILOT_SPEC.md` → v2 section for a Python one-liner.
 
 ---
 

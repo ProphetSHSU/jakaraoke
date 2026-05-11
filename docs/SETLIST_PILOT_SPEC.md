@@ -618,3 +618,118 @@ On gigmac: restart Ableton (RAM cache flush), then on your Setlist Pilot track:
 1. **MIDI noise cleanup** — TinyBox Port 2 emits CC32 + ghost Ch 13 notes alongside each pedal press. Harmless today. Clean up when revisiting firmware.
 2. **client.html prev/current/next overlay** — design session needed. Goal: blend with lyric scroll without eating lyric space.
 3. **Setlist Pilot ↔ jakaraoke pointer sync** — both tools derive pointer from same TinyBox MIDI. If Ableton scene list diverges from jakaraoke setlist.txt mid-session, they drift. Phase 2b Set State Broadcaster makes Ableton single source of truth.
+
+---
+
+# v2 MERGE (2026-05-11) — SP + SSB collapsed into one device
+
+v2 is the canonical device going forward. v1 SP + v1 SSB on separate tracks is superseded but still loadable as a rollback.
+
+## Why merge
+
+Running v1 SP (pedal MIDI + LiveAPI nav) on one track and v1 SSB (observers + UDP bridge) on another created a double-source-of-truth problem: SP updated its `state.currentIdx`, and SSB independently observed `selected_scene` and inferred the same pointer. Most of the time they agreed, but on rapid pedal presses the two pointers could diverge for a beat until Ableton's scene selection propagated. Merging both into a single jsui inside one `.amxd` gives us **one `state.currentIdx`** authoritative for both nav and broadcast.
+
+## What v2 does (single device)
+
+- **Pedal MIDI → LiveAPI nav** (inherited from v1 SP)
+- **LiveAPI observers** (`selected_scene`, `is_playing`, `tempo`) — broadcast UDP state on change (inherited from v1 SSB)
+- **UDP command receive** on port 9900 (`route /j` → `anything()` in jsui) — server drives `play`/`stop`/`next`/`prev`/`goto`/`refresh`/`toggle_track`
+- **Playhead bar/beat stream** via `plugsync~` (see bug fix below)
+- **Track mute toggle** for "Original" / "BT" tracks (navigator.html binding)
+- **jsui canvas** shows prev/now/next scenes + amber divider markers, transport glyph (▶/■), current BPM
+
+## UDP contract (unchanged from v1 SSB)
+
+- **OUT (udpsend → 127.0.0.1:9899)**: JSON payloads with type in `{scene, transport, scenes, playhead, tracks}`
+- **IN (udpreceive 9900 → route /j → jsui inlet 0)**: OSC address `/j`, single string arg = JSON command `{type:"command", action:"..."}`
+
+## Device architecture
+
+- **1 jsui**, inlets=2, outlets=1
+- **Inlet 0** = all non-bar-beat messages: notein (via pack/prepend `note_in`), `live.thisdevice` bang (init), UDP JSON commands (via `route /j`), config messages
+- **Inlet 1** = plugsync~ bar/beat list
+- **Outlet 0** = UDP JSON strings → `udpsend 127.0.0.1 9899`
+
+## Bugs found + fixed during v2 smoke test
+
+### 1. Observer race double-broadcast
+
+**Symptom**: every nav action (pedal or UDP cmd) produced TWO identical `scene` UDP payloads.
+
+**Root cause**: `setSelectedScene()` called `v.set('selected_scene', 'id', sid)` BEFORE updating `state.currentIdx`. `v.set` fires the LiveAPI observer **synchronously**. The observer's no-change guard compared incoming scene idx against `state.currentIdx` (still holding the old value), saw a mismatch, and broadcast. Then the calling code updated `state.currentIdx` and called `broadcastSceneChange()` explicitly → second broadcast.
+
+**Fix**: assign `state.currentIdx = idx` FIRST, then `v.set(...)`. The observer now sees `state.currentIdx` already matches, skips. Only the explicit broadcast fires.
+
+### 2. plugsync~ wrong outlets + wrong signal handling
+
+**Symptom**: playhead bar/beat stream never fired. All samples showed `0. 0.` even during playback.
+
+**Root cause 1 — outlet mapping**: v1 SSB (and inherited v2 v1) connected `plugsync~` outlets 2 and 3 to `snapshot~`. Per Max8 docs, those are actually **beat (int, 1-idx) and beat-fraction (float 0..1)**. The bar outlet is **outlet 1**. Note plugsync~ has **9 outlets**, not 5, and they're a mix of int and float (NOT all signals).
+
+**Root cause 2 — snapshot~ misuse**: `snapshot~` expects signal-rate input and samples it into float messages. plugsync~ outlets 1, 2, 3, etc. are **message outlets** (int/float), not signals. Wiring them into snapshot~'s signal inlet silently gave us `0.0` in perpetuity.
+
+**Fix**:
+- Drop `snapshot~` entirely
+- Drop redundant `metro 200` + `loadmess 1` (snapshot~ was self-sampling, metro double-banged)
+- Wire `plugsync~` outlet 1 (bar) → `change` → `pack i i` inlet 0
+- Wire `plugsync~` outlet 2 (beat) → `change` → `pack i i` inlet 1
+- `change` filters plugsync~'s continuous stream to transitions only
+- `pack` emits list to jsui inlet 1 → `list()` callback dedups by bar change → UDP `playhead`
+
+### 3. Tempo/transport observer did not trigger canvas redraw
+
+**Symptom**: Ableton BPM changed (e.g., scene-baked tempo) — v2 correctly broadcast new tempo via UDP, but the device's own canvas readout kept showing the old BPM.
+
+**Root cause**: `tempoCallback` and `transportCallback` updated `state` and called `broadcastTransport()`, but never called `mgraphics.redraw()`. Canvas only repainted on the next natural trigger (scene change, mouse event).
+
+**Fix**: Append `mgraphics.redraw()` to both observer callbacks. One-line fix each.
+
+## Smoke test results (2026-05-11)
+
+| Subsystem | Result |
+|---|---|
+| Pedal MIDI (notes 3/4/6/7) → action dispatch | ✅ |
+| Scene nav (prev/next/goto) — exactly 1 UDP broadcast per action | ✅ |
+| UDP command receive (play/stop/next/prev) | ✅ |
+| UDP command receive (toggle_track "Original"/"BT") | ✅ |
+| Transport observer (is_playing) → UDP + redraw | ✅ |
+| Tempo observer → UDP + redraw | ✅ |
+| Scene-list broadcast on init | ✅ |
+| Track state broadcast on init + on toggle | ✅ |
+| Playhead bar/beat stream — 1 UDP per bar change | ✅ |
+
+## Files shipped
+
+In `jakaraoke/max_devices/setlist_pilot/`:
+- `Setlist Pilot v2.amxd` (10,135 bytes) — production build
+- `setlist_pilot_v2.js` (23,238 bytes) — production build
+- `generate_setlist_pilot_v2.py` — regenerator (run to rebuild .amxd from JS+layout)
+
+v1 files retained alongside for rollback reference:
+- `Setlist Pilot v1.amxd`, `setlist_pilot_v1.js`, `generate_setlist_pilot_v1_1.py`, `test_setlist_pilot.js`
+
+## Operational workflow tools adopted during v2
+
+- **Log transfer via clipboard** — Jake copies Max console text on gigmac (cmd-C), says "log in clipboard"; we run `ssh gigmac pbpaste` to fetch. No files, no email loop.
+- **UDP command injection for smoke tests** — tiny Python one-liner constructs OSC packet (address `/j`, type `,s`, JSON arg) and sendto 127.0.0.1:9900. Lets us test `toggle_track`, `refresh`, etc. without running the full jakaraoke server:
+  ```python
+  import socket
+  addr = b"/j\x00\x00"
+  tags = b",s\x00\x00"
+  s = b'{"type":"command","action":"toggle_track","track":"Original"}'
+  pad = (-len(s) - 1) % 4
+  msg = addr + tags + s + b"\x00" * (pad + 1)
+  socket.socket(socket.AF_INET, socket.SOCK_DGRAM).sendto(msg, ("127.0.0.1", 9900))
+  ```
+
+## Rollback
+
+If v2 regresses during a gig:
+1. Remove v2 device from its track in Ableton
+2. Re-enable the v1 SP + v1 SSB devices on their original tracks (LEDs → on)
+3. No server-side change required — UDP contract identical
+
+## v2 cleanup backlog (low priority)
+
+1. Remove v1 SP + v1 SSB from the original track after N gigs of v2 soak-test
+2. `SETLIST_PILOT_SPEC.md` planning sections (Pre-Implementation / Open Questions / Implementation Status) could be moved to an `archive/` subdir — they're historical context, not current truth
