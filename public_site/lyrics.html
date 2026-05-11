@@ -1133,22 +1133,23 @@ function renderLine(line, si) {
     var chord = p.chord || '';
     var chordAttr = chord ? ' data-chord="' + esc(chord) + '"' : '';
 
-    // Pad short text under wide chords to prevent overlap
+    // Pad short text under wide chords to prevent overlap.
+    // Chord is monospace at 0.72x; lyric is variable-width. A chord char
+    // is ~1.5x wider than a variable-width space char, so scale accordingly.
     var padded = text;
     if (chord && !isChordOnly) {
       var textLen = text.replace(/\s+$/, '').length; // visible char count
-      var chordLen = chord.length;
-      if (chordLen > textLen + 1) {
-        // Add thin non-breaking spaces after visible text
-        var needed = chordLen - textLen;
-        // Use regular spaces (breakable) so wrapping can still happen here
+      var chordWidth = Math.ceil(chord.length * 1.5); // lyric-char-equivalents
+      if (chordWidth > textLen + 1) {
+        var needed = chordWidth - textLen;
+        // Regular spaces (breakable) so wrapping can still happen here
         padded = text + ' '.repeat(needed);
       }
     }
 
     // Empty text with chord: pad enough to prevent overlap with adjacent chords
     if (chord && padded.trim().length === 0) {
-      padded = '\u00A0'.repeat(chord.length + 2);
+      padded = '\u00A0'.repeat(Math.ceil(chord.length * 1.5) + 2);
     }
 
     html += '<span class="part"' + chordAttr + '>' + esc(padded) + '</span>';
