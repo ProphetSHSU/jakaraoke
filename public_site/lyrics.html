@@ -1645,6 +1645,49 @@ document.body.addEventListener('dblclick', function() {
     toggleEditor = function() { _origToggle(); updateToolbarOffset(); };
   }
 
+  // ========== KEYBOARD DEBUG OVERLAY ==========
+  // Append ?debug=kbd to URL to show real-time visualViewport telemetry.
+  // Useful for diagnosing on-screen-keyboard issues on tablets.
+  if (/[?&]debug=kbd\b/.test(window.location.search)) {
+    var dbg = document.createElement('div');
+    dbg.id = 'kbdDebug';
+    dbg.style.cssText = 'position:fixed;top:8px;right:8px;z-index:99999;' +
+      'background:rgba(255,200,0,0.95);color:#000;font:12px/1.3 monospace;' +
+      'padding:8px 10px;border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,0.5);' +
+      'max-width:240px;white-space:pre;pointer-events:none;';
+    document.body.appendChild(dbg);
+    var dbgUpdate = function(reason) {
+      var vv = window.visualViewport;
+      var lines = [
+        'KBD DEBUG (' + (reason || 'init') + ')',
+        'innerH:    ' + window.innerHeight,
+        'innerW:    ' + window.innerWidth,
+        'vvSupport: ' + (vv ? 'YES' : 'NO'),
+      ];
+      if (vv) {
+        lines.push('vv.height: ' + Math.round(vv.height));
+        lines.push('vv.width:  ' + Math.round(vv.width));
+        lines.push('vv.offTop: ' + Math.round(vv.offsetTop));
+        lines.push('vv.scale:  ' + vv.scale.toFixed(2));
+        var off = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+        lines.push('calcOff:   ' + Math.round(off) + 'px');
+      }
+      lines.push('editorAct: ' + editorActive);
+      lines.push('tbar.bot:  ' + (elEdit.toolbar.style.bottom || '(none)'));
+      lines.push('ua: ' + navigator.userAgent.substring(0, 60));
+      dbg.textContent = lines.join('\n');
+    };
+    dbgUpdate('boot');
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', function() { dbgUpdate('vv-resize'); });
+      window.visualViewport.addEventListener('scroll', function() { dbgUpdate('vv-scroll'); });
+    }
+    window.addEventListener('resize', function() { dbgUpdate('win-resize'); });
+    elEdit.textarea.addEventListener('focus', function() { setTimeout(function(){dbgUpdate('focus');}, 100); });
+    elEdit.textarea.addEventListener('blur', function() { setTimeout(function(){dbgUpdate('blur');}, 100); });
+    setInterval(function() { dbgUpdate('tick'); }, 1000);
+  }
+
   // Handle save result
   // (patched into ws.onmessage below)
 
