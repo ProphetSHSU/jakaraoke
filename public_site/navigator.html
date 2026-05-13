@@ -23,6 +23,7 @@
       --ready-green: #4ecca3;
       --ready-pending: #3a3a50;
       --font: 'SF Pro Display', 'Helvetica Neue', 'Segoe UI', Arial, sans-serif;
+      --nav-font-scale: 1.0;
     }
 
     html, body {
@@ -103,15 +104,15 @@
 
     .song-glyph {
       flex: 0 0 auto;
-      font-size: 18px;
+      font-size: calc(18px * var(--nav-font-scale));
       color: var(--text-dim);
       width: 28px; text-align: center;
     }
-    .song-row.current .song-glyph { color: var(--accent); font-size: 22px; }
+    .song-row.current .song-glyph { color: var(--accent); font-size: calc(22px * var(--nav-font-scale)); }
 
     .song-name {
       flex: 1;
-      font-size: clamp(18px, 5vw, 32px);
+      font-size: clamp(calc(18px * var(--nav-font-scale)), calc(5vw * var(--nav-font-scale)), calc(32px * var(--nav-font-scale)));
       font-weight: 600;
       white-space: nowrap;
       overflow: hidden;
@@ -120,13 +121,13 @@
     }
     .song-row.current .song-name {
       color: var(--text);
-      font-size: clamp(24px, 7vw, 44px);
+      font-size: clamp(calc(24px * var(--nav-font-scale)), calc(7vw * var(--nav-font-scale)), calc(44px * var(--nav-font-scale)));
       font-weight: 800;
     }
 
     .song-meta {
       flex: 0 0 auto;
-      font-size: 12px;
+      font-size: calc(12px * var(--nav-font-scale));
       color: var(--text-dim);
       text-align: right;
     }
@@ -196,10 +197,12 @@
     .setting-row:last-child { border-bottom: none; }
     .setting-label { font-size: 14px; color: var(--text-dim, #a8a8c0); }
     .setting-control { display: flex; align-items: center; gap: 8px; }
-    .setting-control input[type="text"] {
+    .setting-control input[type="text"],
+    .setting-control select {
       background: #0a0a12; border: 1px solid #2a2a3a; border-radius: 6px;
       color: var(--text, #fff); padding: 6px 10px; font-size: 14px; width: 140px;
     }
+    .setting-control select { appearance: none; -webkit-appearance: none; cursor: pointer; }
     .toggle-track {
       width: 44px; height: 24px; border-radius: 12px;
       background: #2a2a3a; position: relative; cursor: pointer; transition: background 0.2s;
@@ -529,6 +532,17 @@
           <div class="toggle-track" id="settingMetronome"><div class="toggle-knob"></div></div>
         </div>
       </div>
+      <div class="setting-row">
+        <span class="setting-label">Font Size</span>
+        <div class="setting-control">
+          <select id="settingFontScale">
+            <option value="0.85">Small</option>
+            <option value="1.0">Normal</option>
+            <option value="1.15">Large</option>
+            <option value="1.3">XL</option>
+          </select>
+        </div>
+      </div>
 
     </div>
   </div>
@@ -658,10 +672,12 @@ function updateMetronomeDots() {
 // ---------- Navigator Preferences ----------
 var navPrefs = {
   showMetronome: localStorage.getItem('nav_show_metronome') !== 'false',
+  fontScale:     parseFloat(localStorage.getItem('nav_font_scale')) || 1.0,
 };
 
 function applyNavPrefs() {
   document.getElementById('metronome').style.display = navPrefs.showMetronome ? 'flex' : 'none';
+  document.documentElement.style.setProperty('--nav-font-scale', String(navPrefs.fontScale));
 }
 applyNavPrefs();
 
@@ -672,10 +688,12 @@ applyNavPrefs();
   var btnClose = document.getElementById('settingsClose');
   var nameInput = document.getElementById('settingName');
   var metroToggle = document.getElementById('settingMetronome');
+  var fontScaleSelect = document.getElementById('settingFontScale');
 
   function openSettings() {
     nameInput.value = playerName || '';
     metroToggle.classList.toggle('on', navPrefs.showMetronome);
+    fontScaleSelect.value = String(navPrefs.fontScale);
     overlay.classList.add('open');
   }
 
@@ -701,6 +719,14 @@ applyNavPrefs();
     applyNavPrefs();
     if (!navPrefs.showMetronome) stopMetronome();
     else if (currentSongMeta && currentSongMeta.tempo) startMetronome(currentSongMeta.tempo);
+  });
+
+  fontScaleSelect.addEventListener('change', function() {
+    var val = parseFloat(fontScaleSelect.value);
+    if (!val || val < 0.5 || val > 2.0) val = 1.0;
+    navPrefs.fontScale = val;
+    localStorage.setItem('nav_font_scale', String(val));
+    applyNavPrefs();
   });
 
 })();
