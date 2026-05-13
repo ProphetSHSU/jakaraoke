@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, interactive-widget=resizes-content">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Lyrics</title>
@@ -513,7 +513,7 @@
 
     .editor-textarea {
       width: 100%;
-      min-height: calc(100vh - 250px);
+      min-height: calc(100dvh - 250px);
       background: #0e0e16;
       color: #c8c8d8;
       border: 1px solid #2a2a3a;
@@ -1621,6 +1621,29 @@ document.body.addEventListener('dblclick', function() {
   elEdit.btn.addEventListener('click', toggleEditor);
   elEdit.cancel.addEventListener('click', function() { closeEditor(); });
   elEdit.save.addEventListener('click', saveEditor);
+
+  // Keep editor toolbar visible above the on-screen keyboard.
+  // Modern browsers honor `interactive-widget=resizes-content` (see <meta>).
+  // For browsers that don't (older iOS Safari, etc.), use the visualViewport
+  // API to detect the keyboard height and push the fixed toolbar up.
+  if (window.visualViewport) {
+    var vv = window.visualViewport;
+    var updateToolbarOffset = function() {
+      if (!editorActive) {
+        elEdit.toolbar.style.bottom = '';
+        return;
+      }
+      var offset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      elEdit.toolbar.style.bottom = offset + 'px';
+    };
+    vv.addEventListener('resize', updateToolbarOffset);
+    vv.addEventListener('scroll', updateToolbarOffset);
+    // Also update when editor opens/closes — the close path resets bottom.
+    var _origClose = closeEditor;
+    closeEditor = function() { _origClose(); updateToolbarOffset(); };
+    var _origToggle = toggleEditor;
+    toggleEditor = function() { _origToggle(); updateToolbarOffset(); };
+  }
 
   // Handle save result
   // (patched into ws.onmessage below)
