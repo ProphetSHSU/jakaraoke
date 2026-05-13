@@ -354,8 +354,10 @@ if (useHttps) {
 
 // Request handler for both HTTP and HTTPS
 function handleRequest(request, response) {
-    var filePath = request.url;
-    
+    // Strip query string and hash fragment so path matching works for URLs
+    // like /lyrics.html?debug=kbd (the path is just /lyrics.html).
+    var filePath = request.url.split('?')[0].split('#')[0];
+
     // Default route serves the client
     if (filePath === '/' || filePath === '') {
         filePath = '/client.html';
