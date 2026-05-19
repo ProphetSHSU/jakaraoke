@@ -162,6 +162,29 @@ function parse(text) {
                 continue;
             }
 
+            // Tempo map directive: {tempo_map: 29:194, 65:120}
+            // Bar:bpm pairs, comma-separated. Lists ONLY mid-song tempo CHANGES;
+            // the initial tempo of each song is set by the Ableton scene name (the
+            // native "150 BPM" suffix). Validates: bar >= 1, 20 <= bpm <= 999.
+            // Result: metadata.tempo_map = [{bar, bpm}, ...] sorted by bar.
+            if (tagName === 'tempo_map') {
+                var pairs = tagValue.split(',');
+                var entries = [];
+                var pairRe = /^\s*(\d+)\s*:\s*([0-9]+(?:\.[0-9]+)?)\s*$/;
+                for (var p = 0; p < pairs.length; p++) {
+                    var pm = pairRe.exec(pairs[p]);
+                    if (!pm) continue;
+                    var bar = parseInt(pm[1], 10);
+                    var bpm = parseFloat(pm[2]);
+                    if (bar >= 1 && bpm >= 20 && bpm <= 999) {
+                        entries.push({ bar: bar, bpm: bpm });
+                    }
+                }
+                entries.sort(function(a, b) { return a.bar - b.bar; });
+                metadata.tempo_map = entries;
+                continue;
+            }
+
             // Comment tags
             if (tagName === 'comment' || tagName === 'c') {
                 sections.push({ type: 'comment', text: tagValue });

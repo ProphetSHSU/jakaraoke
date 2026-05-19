@@ -116,6 +116,8 @@ var state = {
     lastAction: '',
     lastDetail: '',
     udpSendCount: 0,     // telemetry for status display
+    tempoSchedule: [],   // [{bar, bpm}] sorted by bar — sent by server on scene load (set_tempo_schedule)
+    tempoFiredCount: 0,  // telemetry: how many tempo changes fired in current schedule
     ready: false
 };
 
@@ -302,6 +304,10 @@ function setSelectedScene(idx) {
         // from v.set) sees the new value and skips its own broadcast.
         state.currentIdx = idx;
         v.set('selected_scene', 'id', sid);
+        // Clear any prior tempo schedule — server will send a new one (or none)
+        // when it processes the broadcast and resolves the new scene's song.
+        state.tempoSchedule = [];
+        state.tempoFiredCount = 0;
         // Explicit broadcast — observer saw currentIdx matching, skipped.
         broadcastSceneChange();
         post('  setSelected: idx=' + idx + '\n');
@@ -385,6 +391,10 @@ function sceneCallback(args) {
         var prev = state.currentIdx;
         refreshCurrentIdx();
         if (state.currentIdx !== prev) {
+            // Clear any prior tempo schedule — server will send a new one
+            // (or none) for the song matching this scene.
+            state.tempoSchedule = [];
+            state.tempoFiredCount = 0;
             broadcastSceneChange();
             mgraphics.redraw();
         }
@@ -516,6 +526,17 @@ function handleCommand(cmdStr) {
             case 'toggle_track':
                 if (cmd.track) actToggleTrack(cmd.track);
                 break;
+            case 'set_tempo_schedule':
+                if (cmd.schedule && cmd.schedule.length) {
+                    state.tempoSchedule = cmd.schedule.slice();  // copy
+                    state.tempoFiredCount = 0;
+                    post('  tempo_schedule loaded: ' + state.tempoSchedule.length + ' change(s)\n');
+                } else {
+                    state.tempoSchedule = [];
+                    state.tempoFiredCount = 0;
+                    post('  tempo_schedule cleared\n');
+                }
+                break;
             default:
                 post('  unknown action: ' + cmd.action + '\n');
         }
@@ -537,6 +558,24 @@ function list() {
             state.lastBeat = beat;
             if (state.isPlaying) {
                 udpSend({ type: 'playhead', bar: bar, beat: beat });
+            }
+            // Tempo schedule: fire only the most recent overdue change.
+            // If multiple changes are overdue (e.g. user navigated mid-song),
+            // we collapse them into the latest target — safer than blasting
+            // through every intermediate BPM.
+            if (state.tempoSchedule.length > 0 && bar >= state.tempoSchedule[0].bar) {
+                var lastDue = null;
+                while (state.tempoSchedule.length > 0 && bar >= state.tempoSchedule[0].bar) {
+                    lastDue = state.tempoSchedule.shift();
+                }
+                if (lastDue) {
+                    try {
+                        var ls = new LiveAPI('live_set');
+                        ls.set('tempo', lastDue.bpm);
+                        state.tempoFiredCount++;
+                        post('  TEMPO @ bar ' + bar + ' -> ' + lastDue.bpm + ' BPM (target was bar ' + lastDue.bar + ')\n');
+                    } catch (e) { post('  ERR set tempo: ' + e + '\n'); }
+                }
             }
         }
     }

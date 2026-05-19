@@ -890,6 +890,12 @@ function loadSongBySceneName(sceneName, sceneIndex, sceneCount) {
         var songText = fs.readFileSync(songPath).toString("utf-8");
         var parsed = chordpro.parse(songText);
 
+        // Push tempo schedule to Ableton if this song has programmed tempo changes
+        if (parsed.metadata.tempo_map && parsed.metadata.tempo_map.length > 0) {
+            udpBridge.sendCommand({ type: "command", action: "set_tempo_schedule", schedule: parsed.metadata.tempo_map });
+            console.log("UDP: sent tempo schedule for " + match.filename + " — " + parsed.metadata.tempo_map.length + " change(s)");
+        }
+
         // Update internal pointer to match (best-effort sync with setList)
         var setListIdx = setList.indexOf(match.filename);
         if (setListIdx >= 0) songPointer = setListIdx;
