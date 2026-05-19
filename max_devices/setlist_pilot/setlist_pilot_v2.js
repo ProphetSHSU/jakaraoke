@@ -557,7 +557,7 @@ function list() {
             state.lastBar = bar;
             state.lastBeat = beat;
             if (state.isPlaying) {
-                udpSend({ type: 'playhead', bar: bar, beat: beat });
+                udpSendQuiet({ type: 'playhead', bar: bar, beat: beat });  // bar-by-bar — silenced to reduce console noise
             }
             // Tempo schedule: fire only the most recent overdue change.
             // If multiple changes are overdue (e.g. user navigated mid-song),

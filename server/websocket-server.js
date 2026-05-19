@@ -54,6 +54,7 @@ var setListName = null;      // name of the active setlist (null = "All Songs")
 var songPointer = -1;
 var songDurations = {};
 var currentSongPayload = null;
+var currentlyLoadedSongFile = null;  // filename of song loaded by last scene match (null on divider/no-match) — used by save_song to re-emit tempo_schedule
 var lastTrackPayload = null;
 var unmatchedScenes = []; // scenes with no matching song file // cached last-sent song payload (for late-joiner sync)      // filename → durationSeconds (parsed from metadata)
 
@@ -582,6 +583,14 @@ wsServer.on('request', function(request) {
             for (var ri = 0; ri < remoteConnection.length; ri++) {
               remoteConnection[ri].sendUTF(currentSongPayload);
             }
+            // Re-arm tempo schedule on the M4L device if the saved song matches
+            // the currently-loaded scene. Sends an empty schedule when the user
+            // removes/empties {tempo_map}, which clears any prior schedule.
+            if (fn === currentlyLoadedSongFile) {
+              var newSchedule = (reParsed.metadata && reParsed.metadata.tempo_map) || [];
+              udpBridge.sendCommand({ type: "command", action: "set_tempo_schedule", schedule: newSchedule });
+              console.log("UDP: re-armed tempo schedule (save_song) for " + fn + " — " + newSchedule.length + " change(s)");
+            }
             connection.sendUTF(JSON.stringify({ type: 'save_result', ok: true }));
           } catch(saveErr) {
             console.error('Save error:', saveErr);
@@ -859,6 +868,7 @@ function loadSongBySceneName(sceneName, sceneIndex, sceneCount) {
         }
         // Broadcast divider state to clients
         var payload = { "command": 0, "setBreak": true, "setNumber": dividerSetNumber, "sceneName": sceneName };
+        currentlyLoadedSongFile = null;
         currentSongPayload = JSON.stringify(payload);
         for (var i = 0; i < remoteConnection.length; i++) {
             remoteConnection[i].sendUTF(currentSongPayload);
@@ -873,6 +883,7 @@ function loadSongBySceneName(sceneName, sceneIndex, sceneCount) {
     var match = additions.matchSceneToSong(cleanName, availableSongs, null);
     if (!match.filename) {
         console.log("UDP scene: NO MATCH for \"" + sceneName + "\" (slug: " + additions.slugify(cleanName) + ")");
+        currentlyLoadedSongFile = null;
         // Send scene-name-only to clients (no lyrics)
         var payload = { "command": 0, "song": { title: cleanName, lines: [], metadata: {} }, "noLyrics": true };
         for (var i = 0; i < remoteConnection.length; i++) {
@@ -883,6 +894,7 @@ function loadSongBySceneName(sceneName, sceneIndex, sceneCount) {
     }
 
     console.log("UDP scene: \"" + sceneName + "\" → " + match.filename + " [" + match.method + "]");
+    currentlyLoadedSongFile = match.filename;
 
     // Load and broadcast song
     var songPath = getSongPath(match.filename);
