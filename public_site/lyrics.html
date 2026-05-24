@@ -288,7 +288,11 @@
 
     /* === SONG CONTENT === */
     .song-content {
-      padding: 14px 20px 80px 20px;
+      /* padding-bottom is dynamic: enough viewport room so the last lyric
+         line can scroll up to the target line at song end. (1 - targetRatio)
+         × 100vh gives the missing scroll room beyond the natural content
+         bottom; vh auto-tracks viewport resize. */
+      padding: 14px 20px calc((1 - var(--target-ratio, 0.33)) * 100vh) 20px;
       max-width: 900px;
     }
 
@@ -908,6 +912,7 @@ if (!playerName) {
     scrollState.targetRatio = val;
     targetVal.textContent = this.value + '%';
     localStorage.setItem('lyrics_target_ratio', val.toFixed(2));
+    document.documentElement.style.setProperty('--target-ratio', val.toFixed(2));
     showTargetLine(true);
   });
 })();
@@ -1432,6 +1437,11 @@ var scrollState = {
   targetRatio: parseFloat(localStorage.getItem('lyrics_target_ratio') || '0.33')
 };
 
+// Expose targetRatio as a CSS custom property so .song-content can size its
+// bottom padding via calc((1 - var(--target-ratio)) * 100vh) — gives the
+// browser enough scroll room for the last lyric line to reach the target line.
+document.documentElement.style.setProperty('--target-ratio', scrollState.targetRatio.toFixed(2));
+
 function buildAnchors(song) {
   var sections = song.sections || [];
   var meta = song.metadata || {};
@@ -1470,7 +1480,14 @@ function buildAnchors(song) {
   // Time anchors: always add start; add end if duration known
   timeAnchors.unshift({ time: 0, pixelY: 0 });
   if (duration > 0) {
-    var endY = ctn.scrollHeight - window.innerHeight * scrollState.targetRatio;
+    // End anchor = bottom edge of the last rendered content (last lyric line
+    // or last anchored child). NOT scrollHeight — that includes the bottom
+    // padding (vh × (1 - targetRatio)) we add for scroll room. Decoupling
+    // the anchor from the padding lets the auto-scroll target the actual
+    // last lyric, then the padding gives the browser room to actually scroll
+    // it up to the target line at song end.
+    var lastChild = ctn.lastElementChild;
+    var endY = lastChild ? (lastChild.offsetTop - ctn.offsetTop + lastChild.offsetHeight) : 0;
     timeAnchors.push({ time: duration, pixelY: Math.max(0, endY) });
   }
   timeAnchors.sort(function(a, b) { return a.time - b.time; });
