@@ -117,7 +117,8 @@ var state = {
     lastDetail: '',
     udpSendCount: 0,     // telemetry for status display
     tempoSchedule: [],   // [{bar, bpm}] sorted by bar — sent by server on scene load (set_tempo_schedule)
-    tempoFiredCount: 0,  // telemetry: how many tempo changes fired in current schedule
+    tempoFiredIdx: 0,    // next index in tempoSchedule to fire — non-destructive pointer, reset on rewind/replay
+    tempoFiredCount: 0,  // telemetry: how many tempo changes fired in current playthrough
     ready: false
 };
 
@@ -307,6 +308,7 @@ function setSelectedScene(idx) {
         // Clear any prior tempo schedule — server will send a new one (or none)
         // when it processes the broadcast and resolves the new scene's song.
         state.tempoSchedule = [];
+        state.tempoFiredIdx = 0;
         state.tempoFiredCount = 0;
         // Explicit broadcast — observer saw currentIdx matching, skipped.
         broadcastSceneChange();
@@ -394,6 +396,7 @@ function sceneCallback(args) {
             // Clear any prior tempo schedule — server will send a new one
             // (or none) for the song matching this scene.
             state.tempoSchedule = [];
+            state.tempoFiredIdx = 0;
             state.tempoFiredCount = 0;
             broadcastSceneChange();
             mgraphics.redraw();
@@ -528,11 +531,13 @@ function handleCommand(cmdStr) {
                 break;
             case 'set_tempo_schedule':
                 if (cmd.schedule && cmd.schedule.length) {
-                    state.tempoSchedule = cmd.schedule.slice();  // copy
+                    state.tempoSchedule = cmd.schedule.slice();  // copy — non-destructive: scanned via tempoFiredIdx
+                    state.tempoFiredIdx = 0;
                     state.tempoFiredCount = 0;
                     post('  tempo_schedule loaded: ' + state.tempoSchedule.length + ' change(s)\n');
                 } else {
                     state.tempoSchedule = [];
+                    state.tempoFiredIdx = 0;
                     state.tempoFiredCount = 0;
                     post('  tempo_schedule cleared\n');
                 }
@@ -554,19 +559,33 @@ function list() {
         var bar = Math.floor(arguments[0]);
         var beat = Math.floor(arguments[1]);
         if (bar !== state.lastBar) {
+            var prevBar = state.lastBar;
             state.lastBar = bar;
             state.lastBeat = beat;
             if (state.isPlaying) {
                 udpSendQuiet({ type: 'playhead', bar: bar, beat: beat });  // bar-by-bar — silenced to reduce console noise
             }
-            // Tempo schedule: fire only the most recent overdue change.
+            // Rewind/replay detection: if bar moved backwards (clip relaunch,
+            // manual rewind, scene fire from start), re-arm the tempo schedule
+            // from the beginning so subsequent playthroughs fire the same changes.
+            // prevBar=-1 (initial) is not a rewind — only treat real backwards moves.
+            if (prevBar >= 0 && bar < prevBar) {
+                state.tempoFiredIdx = 0;
+                state.tempoFiredCount = 0;
+            }
+            // Tempo schedule: advance the pointer past every entry whose bar is
+            // <= current bar; fire only the most recent overdue change.
             // If multiple changes are overdue (e.g. user navigated mid-song),
             // we collapse them into the latest target — safer than blasting
             // through every intermediate BPM.
-            if (state.tempoSchedule.length > 0 && bar >= state.tempoSchedule[0].bar) {
+            // NON-DESTRUCTIVE: tempoSchedule itself is preserved so replays work.
+            if (state.tempoFiredIdx < state.tempoSchedule.length
+                && bar >= state.tempoSchedule[state.tempoFiredIdx].bar) {
                 var lastDue = null;
-                while (state.tempoSchedule.length > 0 && bar >= state.tempoSchedule[0].bar) {
-                    lastDue = state.tempoSchedule.shift();
+                while (state.tempoFiredIdx < state.tempoSchedule.length
+                       && bar >= state.tempoSchedule[state.tempoFiredIdx].bar) {
+                    lastDue = state.tempoSchedule[state.tempoFiredIdx];
+                    state.tempoFiredIdx++;
                 }
                 if (lastDue) {
                     try {

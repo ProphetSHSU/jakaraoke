@@ -31,8 +31,7 @@ this handoff conflicts with ECOSYSTEM.md, ECOSYSTEM.md wins.
 
 ## Workspace & Repo Structure
 
-- **Repo:** `/Users/jawgner/source/jakaraoke/` (git, deployed to gigmac)
-- **Workspace:** `/Users/jawgner/JakeDocs/AI_Workspaces/Jakaraoke/` (staging, tools, docs)
+- **Repo:** `/Users/jawgner/JakeDocs/AI_Workspaces/source/jakaraoke/` (git, deployed to gigmac — single source of truth)
 - **Song libraries:** Dropbox-synced ChordPro `.txt` files (WingPunchDB, SoloSetDB, StartUpDB)
 - **Local song copy:** `/Users/jawgner/source/Song_Repo/WingPunchDB/`
 
