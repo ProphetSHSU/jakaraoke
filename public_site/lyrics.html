@@ -453,6 +453,7 @@
       min-width: 28px; text-align: center;
     }
     .scroll-target-line .bar-label:empty { display: none; }
+    body.hide-bar-label .scroll-target-line .bar-label { display: none; }
     .scroll-target-line .bar-label.has-offset {
       color: #f5a623;
       border-color: rgba(245, 166, 35, 0.55);
@@ -733,6 +734,13 @@
       </div>
 
       <div class="setting-row">
+        <span class="setting-label">Measure Number</span>
+        <div class="setting-control">
+          <div class="toggle-track" id="settingBarLabel"><div class="toggle-knob"></div></div>
+        </div>
+      </div>
+
+      <div class="setting-row">
         <span class="setting-label">Scroll Target Line</span>
         <div class="setting-control">
           <input type="range" id="settingTargetLine" min="15" max="50" step="1" />
@@ -800,13 +808,15 @@ applyFontScale();
 var prefs = {
   showChords: localStorage.getItem('lyrics_show_chords') !== 'false',
   showSections: localStorage.getItem('lyrics_show_sections') !== 'false',
-  showMetronome: localStorage.getItem('lyrics_show_metronome') !== 'false'
+  showMetronome: localStorage.getItem('lyrics_show_metronome') !== 'false',
+  showBarLabel: localStorage.getItem('lyrics_show_bar_label') !== 'false'
 };
 
 function applyPrefs() {
   document.body.classList.toggle('hide-chords', !prefs.showChords);
   document.body.classList.toggle('hide-sections', !prefs.showSections);
   document.getElementById('metronome').style.display = prefs.showMetronome ? 'flex' : 'none';
+  document.body.classList.toggle('hide-bar-label', !prefs.showBarLabel);
 }
 applyPrefs();
 
@@ -827,6 +837,7 @@ if (!playerName) {
   var chordToggle = document.getElementById('settingChords');
   var sectionToggle = document.getElementById('settingSections');
   var metroToggle = document.getElementById('settingMetronome');
+  var barLabelToggle = document.getElementById('settingBarLabel');
 
   var targetSlider = document.getElementById('settingTargetLine');
   var targetVal = document.getElementById('settingTargetVal');
@@ -841,6 +852,7 @@ if (!playerName) {
     chordToggle.classList.toggle('on', prefs.showChords);
     sectionToggle.classList.toggle('on', prefs.showSections);
     metroToggle.classList.toggle('on', prefs.showMetronome);
+    barLabelToggle.classList.toggle('on', prefs.showBarLabel);
     overlay.classList.add('open');
   }
 
@@ -889,6 +901,7 @@ if (!playerName) {
     if (!prefs.showMetronome) stopMetronome();
     else if (currentSongMeta && currentSongMeta.tempo) startMetronome(currentSongMeta.tempo);
   });
+  wireToggle(barLabelToggle, 'showBarLabel');
 
   targetSlider.addEventListener('input', function() {
     var val = parseInt(this.value, 10) / 100;
