@@ -26,7 +26,7 @@ mgraphics.init();
 // SCRIPT_VERSION is stamped into every consequential log line so we can always
 // confirm at a glance which build is running. Bump it whenever this file changes
 // in a way that affects runtime behavior.
-var SCRIPT_VERSION = "v2.1.0-baseline+version-2026-05-24-b0bc9ce";
+var SCRIPT_VERSION = "v2.2.0-scene-tempo-2026-05-24";
 post('=== SP2 script loaded: ' + (new Date()).toISOString() + ' [' + SCRIPT_VERSION + '] ===\n');
 mgraphics.relative_coords = 0;
 mgraphics.autofill = 0;
@@ -130,7 +130,6 @@ var state = {
     tempoFiredIdx: 0,          // next index in tempoSchedule to fire — non-destructive pointer, reset on rewind/replay
     tempoFiredCount: 0,        // telemetry: how many tempo changes fired in current playthrough
     baselineTempo: null,       // captured Ableton tempo for the pre-first-entry zone — restored on scrub-back
-    captureBaselineNext: false,// while true, tempoCallback updates baselineTempo. Opens on play-start, closes when bar reaches schedule[0].bar
     ready: false
 };
 
@@ -323,7 +322,6 @@ function setSelectedScene(idx) {
         state.tempoFiredIdx = 0;
         state.tempoFiredCount = 0;
         state.baselineTempo = null;
-        state.captureBaselineNext = false;
         // Explicit broadcast — observer saw currentIdx matching, skipped.
         broadcastSceneChange();
         post('  setSelected: idx=' + idx + '\n');
@@ -413,11 +411,30 @@ function sceneCallback(args) {
             state.tempoFiredIdx = 0;
             state.tempoFiredCount = 0;
             state.baselineTempo = null;
-            state.captureBaselineNext = false;
             broadcastSceneChange();
             mgraphics.redraw();
         }
     } catch (e) { post('  ERR sceneCb: ' + e + '\n'); }
+}
+
+// Read the selected scene's initial tempo via LiveAPI.
+// In Ableton, widening the Main track in Session view exposes a per-scene
+// 'Tempo' field. Setting it makes scene-launch establish that BPM as the song's
+// starting tempo. We read this same value as the authoritative baseline — no
+// guesswork, no observation window, deterministic.
+//
+// Returns the scene's tempo as a float, or -1 if the scene has no tempo set
+// (the scene won't change BPM on launch). Returns NaN on LiveAPI error.
+function getSceneInitialTempo(sceneIdx) {
+    if (sceneIdx == null || sceneIdx < 0) return NaN;
+    try {
+        var sc = new LiveAPI('live_set scenes ' + sceneIdx);
+        var t = parseFloat(sc.get('tempo'));
+        return t;
+    } catch (e) {
+        post('  ERR getSceneInitialTempo: ' + e + '\n');
+        return NaN;
+    }
 }
 
 function transportCallback(args) {
@@ -435,16 +452,24 @@ function transportCallback(args) {
             if (becamePlaying) {
                 state.tempoFiredIdx = 0;
                 state.tempoFiredCount = 0;
-                // Open the baseline-capture window: tempoCallback will update
-                // state.baselineTempo on every observed tempo change until we
-                // cross schedule[0].bar (window closes in list()). Seed with the
-                // currently-observed tempo as a best-guess fallback in case
-                // tempoCallback never fires (constant-tempo songs).
-                if (state.tempoSchedule.length > 0) {
-                    state.captureBaselineNext = true;
+                // Read the selected scene's initial tempo (set in Ableton via the
+                // widened Main track in Session view). If valid, use it as the
+                // authoritative baseline AND apply it to master tempo right now —
+                // this gives us the same effect as Ableton's clip-tempo automation
+                // would, but deterministically, on every play-start.
+                var sceneTempo = getSceneInitialTempo(state.currentIdx);
+                if (sceneTempo > 0 && state.tempoSchedule.length > 0) {
+                    state.baselineTempo = sceneTempo;
+                    try {
+                        ls.set('tempo', sceneTempo);
+                        post('  TEMPO @ play-start [' + SCRIPT_VERSION + '] -> ' + sceneTempo + ' BPM (scene ' + state.currentIdx + ' initial tempo)\n');
+                    } catch (e) { post('  ERR play-start tempo set: ' + e + '\n'); }
+                } else if (state.tempoSchedule.length > 0) {
+                    // Scene has no tempo set — fall back to current master tempo as best-guess baseline.
                     state.baselineTempo = state.tempo;
+                    post('  PLAY-START [' + SCRIPT_VERSION + ']: scene ' + state.currentIdx + ' has no initial tempo (sceneTempo=' + sceneTempo + '); using current master tempo ' + state.tempo + ' as baseline\n');
                 }
-                post('  PLAY-START [' + SCRIPT_VERSION + ']: re-armed tempo (idx=0, schedule.length=' + state.tempoSchedule.length + ', lastBar=' + state.lastBar + ', baselineSeed=' + state.baselineTempo + ')\n');
+                post('  PLAY-START [' + SCRIPT_VERSION + ']: re-armed tempo (idx=0, schedule.length=' + state.tempoSchedule.length + ', lastBar=' + state.lastBar + ', sceneTempo=' + sceneTempo + ', baseline=' + state.baselineTempo + ')\n');
             }
             broadcastTransport();
             mgraphics.redraw();
@@ -458,16 +483,6 @@ function tempoCallback(args) {
         var t = parseFloat(ls.get('tempo'));
         if (t !== state.tempo) {
             state.tempo = t;
-            // Baseline capture: while the play-start window is open (set in
-            // transportCallback, closed in list() when bar reaches schedule[0].bar),
-            // record every observed tempo change. The last value seen before the
-            // window closes is the baseline restored on scrub-back into the
-            // pre-first-entry zone. Handles tempo automation ramps too — we keep
-            // updating until the window actually closes.
-            if (state.captureBaselineNext) {
-                state.baselineTempo = t;
-                post('  baseline updated: ' + t + ' BPM (capture window open)\n');
-            }
             broadcastTransport();
             mgraphics.redraw();
         }
@@ -581,14 +596,12 @@ function handleCommand(cmdStr) {
                     state.tempoFiredIdx = 0;
                     state.tempoFiredCount = 0;
                     state.baselineTempo = null;
-                    state.captureBaselineNext = false;
                     post('  tempo_schedule loaded [' + SCRIPT_VERSION + ']: ' + state.tempoSchedule.length + ' change(s)\n');
                 } else {
                     state.tempoSchedule = [];
                     state.tempoFiredIdx = 0;
                     state.tempoFiredCount = 0;
                     state.baselineTempo = null;
-                    state.captureBaselineNext = false;
                     post('  tempo_schedule cleared\n');
                 }
                 break;
@@ -636,15 +649,6 @@ function list() {
                         post('  TEMPO @ bar ' + bar + ' -> ' + state.baselineTempo + ' BPM (baseline restore — pre-first-entry zone)\n');
                     } catch (e) { post('  ERR baseline restore: ' + e + '\n'); }
                 }
-            }
-            // Close the baseline-capture window once we cross the first scheduled
-            // change. After this, tempoCallback fires are either user knob-twists
-            // or our own ls.set writes — neither should overwrite the baseline.
-            if (state.captureBaselineNext
-                && state.tempoSchedule.length > 0
-                && bar >= state.tempoSchedule[0].bar) {
-                state.captureBaselineNext = false;
-                post('  baseline window closed: final baselineTempo=' + state.baselineTempo + ' BPM\n');
             }
             // Tempo schedule: advance the pointer past every entry whose bar is
             // <= current bar; fire only the most recent overdue change.
