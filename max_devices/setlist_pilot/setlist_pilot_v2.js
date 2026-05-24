@@ -409,7 +409,18 @@ function transportCallback(args) {
         var ls = new LiveAPI('live_set');
         var playing = parseInt(ls.get('is_playing'), 10) === 1;
         if (playing !== state.isPlaying) {
+            var becamePlaying = playing && !state.isPlaying;
             state.isPlaying = playing;
+            // PRIMARY tempo-replay fix: reset the schedule pointer on every play-start.
+            // Ableton's transport bar does NOT rewind on Stop+Play (it keeps incrementing
+            // even though the clip restarts at clip-bar 1), so the bar<prevBar rewind
+            // detector in list() never fires between runs. Resetting here covers all
+            // common cases: scene-relaunch, transport stop/start, clip relaunch.
+            if (becamePlaying) {
+                state.tempoFiredIdx = 0;
+                state.tempoFiredCount = 0;
+                post('  PLAY-START: re-armed tempo (idx=0, schedule.length=' + state.tempoSchedule.length + ', lastBar=' + state.lastBar + ')\n');
+            }
             broadcastTransport();
             mgraphics.redraw();
         }
@@ -572,6 +583,7 @@ function list() {
             if (prevBar >= 0 && bar < prevBar) {
                 state.tempoFiredIdx = 0;
                 state.tempoFiredCount = 0;
+                post('  REWIND: prevBar=' + prevBar + ' -> bar=' + bar + ' — re-armed tempo\n');
             }
             // Tempo schedule: advance the pointer past every entry whose bar is
             // <= current bar; fire only the most recent overdue change.

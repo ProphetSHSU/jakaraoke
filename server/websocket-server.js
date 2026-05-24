@@ -76,6 +76,24 @@ var transport = {
     bpb: 4                  // beats per bar
 };
 
+// Build the tempo schedule sent to the M4L SP v2 device.
+// Prepends an implicit {bar:1, bpm:metadata.tempo} baseline so that scrubbing
+// backwards past the first programmed change restores the song's start tempo
+// (M4L scan-loop fires the latest entry whose bar <= currentBar; without a
+// baseline entry, no fire happens for bars < first programmed change).
+// Returns [] for songs with no tempo_map — caller decides whether to emit an
+// empty schedule (clears M4L state on save_song) or skip emit entirely.
+function buildTempoSchedule(metadata) {
+    var changes = (metadata && metadata.tempo_map) || [];
+    if (changes.length === 0) return [];
+    var schedule = changes.slice();
+    var baseline = metadata && metadata.tempo;
+    if (baseline && (schedule[0].bar > 1)) {
+        schedule.unshift({ bar: 1, bpm: baseline });
+    }
+    return schedule;
+}
+
 function transportPlay() {
     if (transport.state === 'playing') return;
 
@@ -587,9 +605,9 @@ wsServer.on('request', function(request) {
             // the currently-loaded scene. Sends an empty schedule when the user
             // removes/empties {tempo_map}, which clears any prior schedule.
             if (fn === currentlyLoadedSongFile) {
-              var newSchedule = (reParsed.metadata && reParsed.metadata.tempo_map) || [];
+              var newSchedule = buildTempoSchedule(reParsed.metadata);
               udpBridge.sendCommand({ type: "command", action: "set_tempo_schedule", schedule: newSchedule });
-              console.log("UDP: re-armed tempo schedule (save_song) for " + fn + " — " + newSchedule.length + " change(s)");
+              console.log("UDP: re-armed tempo schedule (save_song) for " + fn + " — " + newSchedule.length + " entry/entries (incl. baseline)");
             }
             connection.sendUTF(JSON.stringify({ type: 'save_result', ok: true }));
           } catch(saveErr) {
@@ -902,10 +920,13 @@ function loadSongBySceneName(sceneName, sceneIndex, sceneCount) {
         var songText = fs.readFileSync(songPath).toString("utf-8");
         var parsed = chordpro.parse(songText);
 
-        // Push tempo schedule to Ableton if this song has programmed tempo changes
-        if (parsed.metadata.tempo_map && parsed.metadata.tempo_map.length > 0) {
-            udpBridge.sendCommand({ type: "command", action: "set_tempo_schedule", schedule: parsed.metadata.tempo_map });
-            console.log("UDP: sent tempo schedule for " + match.filename + " — " + parsed.metadata.tempo_map.length + " change(s)");
+        // Push tempo schedule to Ableton if this song has programmed tempo changes.
+        // buildTempoSchedule prepends an implicit {bar:1, bpm:masterTempo} baseline so
+        // scrubbing back past the first {tempo_map} entry restores the song's start tempo.
+        var schedule = buildTempoSchedule(parsed.metadata);
+        if (schedule.length > 0) {
+            udpBridge.sendCommand({ type: "command", action: "set_tempo_schedule", schedule: schedule });
+            console.log("UDP: sent tempo schedule for " + match.filename + " — " + schedule.length + " entry/entries (incl. baseline)");
         }
 
         // Update internal pointer to match (best-effort sync with setList)
