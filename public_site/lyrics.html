@@ -1593,9 +1593,12 @@ function updateBarLabel() {
   var label = document.getElementById('scrollTargetBarLabel');
   if (!label) return;
 
-  // Hide only when no song loaded — otherwise we always have at least the
-  // visual line bar (computed from scroll position via anchors).
-  if (!currentSongMeta) {
+  // Single source of truth: Ableton's transport bar from plugsync playhead msgs.
+  // Hidden when no song loaded OR no playhead has arrived yet (don't fabricate
+  // a bar number from visual line position — that hides whether plugsync is
+  // actually emitting).
+  var abletonBar = scrollState.currentBar | 0;
+  if (!currentSongMeta || abletonBar < 1) {
     label.textContent = '';
     label.classList.remove('has-offset');
     return;
@@ -1603,19 +1606,9 @@ function updateBarLabel() {
 
   var lineY = window.scrollY + window.innerHeight * scrollState.targetRatio;
   var lineBarFrac = computeBarAtPixelY(lineY);
-  var lineBar = Math.max(1, Math.round(lineBarFrac));
-  var abletonBar = scrollState.currentBar | 0;
-
-  if (abletonBar < 1) {
-    // No Ableton playhead yet (paused, just loaded, or time-mode song where
-    // the server hasn't pushed a bar update). Show just the line bar so the
-    // label is always visible / actionable for {bar:N} editing.
-    label.textContent = String(lineBar);
-    label.classList.remove('has-offset');
-    return;
-  }
-
+  var lineBar = Math.round(lineBarFrac);
   var offset = lineBar - abletonBar;
+
   if (offset === 0) {
     label.textContent = String(abletonBar);
     label.classList.remove('has-offset');
