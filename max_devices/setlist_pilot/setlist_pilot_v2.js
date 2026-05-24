@@ -22,14 +22,19 @@ mgraphics.init();
 // Load marker — printed on every script (re)load. If you don't see this line
 // in the Max console after right-click → Reload, the device didn't actually
 // reload the new code (try closing + reopening the device, or restart Ableton).
-post('=== SP2 script loaded: ' + (new Date()).toISOString() + ' ===\n');
+//
+// SCRIPT_VERSION is stamped into every consequential log line so we can always
+// confirm at a glance which build is running. Bump it whenever this file changes
+// in a way that affects runtime behavior.
+var SCRIPT_VERSION = "v2.1.0-baseline+version-2026-05-24-b0bc9ce";
+post('=== SP2 script loaded: ' + (new Date()).toISOString() + ' [' + SCRIPT_VERSION + '] ===\n');
 mgraphics.relative_coords = 0;
 mgraphics.autofill = 0;
 
 inlets = 2;
 outlets = 2;  // 0 = UDP + print; 1 = UDP only (for bulky payloads)
 
-var BUILD_TAG = "setlist_pilot v2.0.0 (2026-05-10 merged SP+SSB)";
+var BUILD_TAG = "setlist_pilot " + SCRIPT_VERSION;
 post("═══ " + BUILD_TAG + " LOADED ═══\n");
 
 // ===========================================================================
@@ -439,7 +444,7 @@ function transportCallback(args) {
                     state.captureBaselineNext = true;
                     state.baselineTempo = state.tempo;
                 }
-                post('  PLAY-START: re-armed tempo (idx=0, schedule.length=' + state.tempoSchedule.length + ', lastBar=' + state.lastBar + ', baselineSeed=' + state.baselineTempo + ')\n');
+                post('  PLAY-START [' + SCRIPT_VERSION + ']: re-armed tempo (idx=0, schedule.length=' + state.tempoSchedule.length + ', lastBar=' + state.lastBar + ', baselineSeed=' + state.baselineTempo + ')\n');
             }
             broadcastTransport();
             mgraphics.redraw();
@@ -577,7 +582,7 @@ function handleCommand(cmdStr) {
                     state.tempoFiredCount = 0;
                     state.baselineTempo = null;
                     state.captureBaselineNext = false;
-                    post('  tempo_schedule loaded: ' + state.tempoSchedule.length + ' change(s)\n');
+                    post('  tempo_schedule loaded [' + SCRIPT_VERSION + ']: ' + state.tempoSchedule.length + ' change(s)\n');
                 } else {
                     state.tempoSchedule = [];
                     state.tempoFiredIdx = 0;
@@ -617,7 +622,7 @@ function list() {
             if (prevBar >= 0 && bar < prevBar) {
                 state.tempoFiredIdx = 0;
                 state.tempoFiredCount = 0;
-                post('  REWIND: prevBar=' + prevBar + ' -> bar=' + bar + ' — re-armed tempo\n');
+                post('  REWIND [' + SCRIPT_VERSION + ']: prevBar=' + prevBar + ' -> bar=' + bar + ' — re-armed tempo\n');
                 // If we rewound INTO the pre-first-entry zone and we have a
                 // captured baseline, restore it. Without this, the tempo would
                 // remain stuck at whatever the last fired schedule entry set it
