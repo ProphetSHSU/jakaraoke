@@ -26,7 +26,7 @@ mgraphics.init();
 // SCRIPT_VERSION is stamped into every consequential log line so we can always
 // confirm at a glance which build is running. Bump it whenever this file changes
 // in a way that affects runtime behavior.
-var SCRIPT_VERSION = "v2.2.0-scene-tempo-2026-05-24";
+var SCRIPT_VERSION = "v2.2.1-defer-tempo-set-2026-05-24";
 post('=== SP2 script loaded: ' + (new Date()).toISOString() + ' [' + SCRIPT_VERSION + '] ===\n');
 mgraphics.relative_coords = 0;
 mgraphics.autofill = 0;
@@ -437,6 +437,25 @@ function getSceneInitialTempo(sceneIdx) {
     }
 }
 
+// Set Live master tempo from inside a notification callback (transportCallback,
+// sceneCallback, etc). Live's API forbids mutating its state synchronously from
+// observer callbacks (warns: "Changes cannot be triggered by notifications. You
+// will need to defer your response."), so we schedule the set via a Max Task
+// to run on the next idle tick. Use this everywhere ls.set('tempo', X) is
+// called outside of regular message handlers (list/anything).
+function deferTempoSet(bpm, label) {
+    var t = new Task(function() {
+        try {
+            var lsd = new LiveAPI('live_set');
+            lsd.set('tempo', bpm);
+            post('  TEMPO [' + SCRIPT_VERSION + '] -> ' + bpm + ' BPM ' + label + ' (deferred)\n');
+        } catch (e) {
+            post('  ERR deferTempoSet: ' + e + '\n');
+        }
+    }, this);
+    t.schedule(0);
+}
+
 function transportCallback(args) {
     try {
         var ls = new LiveAPI('live_set');
@@ -460,10 +479,7 @@ function transportCallback(args) {
                 var sceneTempo = getSceneInitialTempo(state.currentIdx);
                 if (sceneTempo > 0 && state.tempoSchedule.length > 0) {
                     state.baselineTempo = sceneTempo;
-                    try {
-                        ls.set('tempo', sceneTempo);
-                        post('  TEMPO @ play-start [' + SCRIPT_VERSION + '] -> ' + sceneTempo + ' BPM (scene ' + state.currentIdx + ' initial tempo)\n');
-                    } catch (e) { post('  ERR play-start tempo set: ' + e + '\n'); }
+                    deferTempoSet(sceneTempo, '(scene ' + state.currentIdx + ' initial tempo)');
                 } else if (state.tempoSchedule.length > 0) {
                     // Scene has no tempo set — fall back to current master tempo as best-guess baseline.
                     state.baselineTempo = state.tempo;
