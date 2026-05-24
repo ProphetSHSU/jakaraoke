@@ -1096,6 +1096,7 @@ function handleSong(msg) {
   scrollState.playStartedAt = null;
   scrollState.elapsedOffset = 0;
   scrollState.userOffset = 0;
+  scrollState.lastFrameScrollY = 0;
 
   requestAnimationFrame(function() {
     buildAnchors(song);
@@ -1267,6 +1268,7 @@ function handleTransport(msg) {
     scrollState.elapsedOffset = 0;
     scrollState.playStartedAt = null;
     scrollState.userOffset = 0;
+    scrollState.lastFrameScrollY = 0;
     stopScrollLoop();
     showTargetLine(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1415,7 +1417,7 @@ var scrollState = {
   // User offset (Lisa's manual scroll adjustment)
   userOffset: 0,      // pixels — added to auto-scroll target
   userTouching: false, // true while finger is on screen
-  lastAutoY: 0,       // last programmatic scroll position
+  lastFrameScrollY: 0, // drift-detector ref: window.scrollY value we last wrote. Diff vs current window.scrollY = user input absorbed into userOffset.
 
   // Engine
   rafId: null,
@@ -1433,6 +1435,7 @@ function buildAnchors(song) {
   scrollState.tempo = tempo;
   scrollState.bpb = bpb;
   scrollState.userOffset = 0;
+  scrollState.lastFrameScrollY = 0;
   scrollState.currentBar = 0;
   scrollState.currentBeat = 0;
   scrollState.playheadReceivedAt = null;
@@ -1585,18 +1588,44 @@ function computeBarAtPixelY(pixelY) {
   return scrollState.currentBar || 0;
 }
 
+// Convert userOffset (pixels) -> bars via local pixels-per-bar at the current
+// Ableton bar. Source of truth for the bar-label offset: tracks the user's
+// deliberate manual scroll (intent), NOT the visual scroll line (which moves
+// smoothly between line anchors and produces spurious +/-1 ghost offsets).
+function userOffsetInBars() {
+  var px = scrollState.userOffset;
+  if (px === 0) return 0;
+  var a = scrollState.barAnchors;
+  if (a.length < 2) return 0;
+  var atBar = scrollState.currentBar || 1;
+  for (var i = 0; i < a.length - 1; i++) {
+    if (atBar >= a[i].bar && atBar < a[i + 1].bar) {
+      var dy = a[i + 1].pixelY - a[i].pixelY;
+      var db = a[i + 1].bar - a[i].bar;
+      if (dy > 0 && db > 0) return px / (dy / db);
+      return 0;
+    }
+  }
+  var last = a.length - 1;
+  var dy = a[last].pixelY - a[last - 1].pixelY;
+  var db = a[last].bar - a[last - 1].bar;
+  if (dy > 0 && db > 0) return px / (dy / db);
+  return 0;
+}
+
 // Update the bar label at the right edge of the scroll target line.
-// Shows Ableton's actual bar outside parens (ground truth for {bar:N} edits);
-// adds (+N)/(-N) offset inside parens when the line has drifted from auto.
-// Hidden during waiting state and when there's no song context yet.
+// Format:
+//   "40"      - playing bar 40, no user offset
+//   "40 (+2)" - playing bar 40, user has scrolled visual ~2 bars ahead of auto
+//   "40 (-1)" - playing bar 40, user has scrolled ~1 bar behind auto
+// Offset source: userOffset (px) translated to bars via local anchor density.
+// NOT the visual line position - that drifts smoothly between line anchors as
+// the auto-scroll engine interpolates and would create ghost +/-1 offsets the
+// user did not generate.
 function updateBarLabel() {
   var label = document.getElementById('scrollTargetBarLabel');
   if (!label) return;
 
-  // Single source of truth: Ableton's transport bar from plugsync playhead msgs.
-  // Hidden when no song loaded OR no playhead has arrived yet (don't fabricate
-  // a bar number from visual line position — that hides whether plugsync is
-  // actually emitting).
   var abletonBar = scrollState.currentBar | 0;
   if (!currentSongMeta || abletonBar < 1) {
     label.textContent = '';
@@ -1604,34 +1633,42 @@ function updateBarLabel() {
     return;
   }
 
-  var lineY = window.scrollY + window.innerHeight * scrollState.targetRatio;
-  var lineBarFrac = computeBarAtPixelY(lineY);
-  var lineBar = Math.round(lineBarFrac);
-  var offset = lineBar - abletonBar;
-
-  if (offset === 0) {
+  var offsetBars = userOffsetInBars();
+  if (Math.abs(offsetBars) < 0.5) {
     label.textContent = String(abletonBar);
     label.classList.remove('has-offset');
   } else {
-    var sign = offset > 0 ? '+' : '';
-    label.textContent = abletonBar + ' (' + sign + offset + ')';
+    var n = Math.round(offsetBars);
+    var sign = n > 0 ? '+' : '';
+    label.textContent = abletonBar + ' (' + sign + n + ')';
     label.classList.add('has-offset');
   }
 }
 
 function scrollTick() {
   if (transportState !== 'playing') return;
+
+  // Drift detector: anything that changed window.scrollY since the last frame
+  // (touch drag, wheel, trackpad, mouse, keyboard, etc.) is user input — fold
+  // it into userOffset so the manual offset persists across input methods.
+  // 0.5px threshold suppresses subpixel rounding noise.
+  var drift = window.scrollY - scrollState.lastFrameScrollY;
+  if (Math.abs(drift) > 0.5) {
+    scrollState.userOffset += drift;
+  }
+
   var targetY = getTargetPixelY();
   var scrollY = Math.max(0, targetY - window.innerHeight * scrollState.targetRatio);
-
-  // Apply user offset (from manual scrolling)
   scrollY += scrollState.userOffset;
   scrollY = Math.max(0, scrollY);
 
-  // Only programmatically scroll if user isn't touching the screen
   if (!scrollState.userTouching) {
-    scrollState.lastAutoY = scrollY;
     window.scrollTo(0, scrollY);
+    scrollState.lastFrameScrollY = scrollY;
+  } else {
+    // Don't fight an active touch drag — would cause iOS jitter. Track current
+    // position so next-frame drift detection stays accurate.
+    scrollState.lastFrameScrollY = window.scrollY;
   }
 
   // Refresh the bar label every frame (cheap text update; tracks both the
@@ -1671,27 +1708,20 @@ function handlePlayhead(msg) {
 })();
 
 // User touch detection for manual scroll offset
+// Touch drag tracking: prevent fighting an in-progress finger drag with our
+// programmatic scrollTo. userOffset itself is captured continuously by
+// scrollTick's drift detector — no settle timer or manual delta math needed.
 (function() {
-  var touchSettleTimer = null;
-
   document.addEventListener('touchstart', function() {
     scrollState.userTouching = true;
-    if (touchSettleTimer) { clearTimeout(touchSettleTimer); touchSettleTimer = null; }
   }, { passive: true });
 
   document.addEventListener('touchend', function() {
-    // Delay resuming programmatic scroll to let momentum scrolling settle
-    if (touchSettleTimer) clearTimeout(touchSettleTimer);
-    touchSettleTimer = setTimeout(function() {
-      // Compute where auto-scroll WOULD be right now (fresh, not stale)
-      if (transportState === 'playing') {
-        var autoY = getTargetPixelY();
-        var autoScrollY = Math.max(0, autoY - window.innerHeight * scrollState.targetRatio);
-        scrollState.userOffset = window.scrollY - autoScrollY;
-      }
-      scrollState.userTouching = false;
-      touchSettleTimer = null;
-    }, 500);
+    scrollState.userTouching = false;
+  }, { passive: true });
+
+  document.addEventListener('touchcancel', function() {
+    scrollState.userTouching = false;
   }, { passive: true });
 })();
 
