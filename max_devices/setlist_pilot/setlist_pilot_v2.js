@@ -121,9 +121,11 @@ var state = {
     lastAction: '',
     lastDetail: '',
     udpSendCount: 0,     // telemetry for status display
-    tempoSchedule: [],   // [{bar, bpm}] sorted by bar — sent by server on scene load (set_tempo_schedule)
-    tempoFiredIdx: 0,    // next index in tempoSchedule to fire — non-destructive pointer, reset on rewind/replay
-    tempoFiredCount: 0,  // telemetry: how many tempo changes fired in current playthrough
+    tempoSchedule: [],         // [{bar, bpm}] sorted by bar — sent by server on scene load (set_tempo_schedule)
+    tempoFiredIdx: 0,          // next index in tempoSchedule to fire — non-destructive pointer, reset on rewind/replay
+    tempoFiredCount: 0,        // telemetry: how many tempo changes fired in current playthrough
+    baselineTempo: null,       // captured Ableton tempo for the pre-first-entry zone — restored on scrub-back
+    captureBaselineNext: false,// while true, tempoCallback updates baselineTempo. Opens on play-start, closes when bar reaches schedule[0].bar
     ready: false
 };
 
@@ -315,6 +317,8 @@ function setSelectedScene(idx) {
         state.tempoSchedule = [];
         state.tempoFiredIdx = 0;
         state.tempoFiredCount = 0;
+        state.baselineTempo = null;
+        state.captureBaselineNext = false;
         // Explicit broadcast — observer saw currentIdx matching, skipped.
         broadcastSceneChange();
         post('  setSelected: idx=' + idx + '\n');
@@ -403,6 +407,8 @@ function sceneCallback(args) {
             state.tempoSchedule = [];
             state.tempoFiredIdx = 0;
             state.tempoFiredCount = 0;
+            state.baselineTempo = null;
+            state.captureBaselineNext = false;
             broadcastSceneChange();
             mgraphics.redraw();
         }
@@ -424,7 +430,16 @@ function transportCallback(args) {
             if (becamePlaying) {
                 state.tempoFiredIdx = 0;
                 state.tempoFiredCount = 0;
-                post('  PLAY-START: re-armed tempo (idx=0, schedule.length=' + state.tempoSchedule.length + ', lastBar=' + state.lastBar + ')\n');
+                // Open the baseline-capture window: tempoCallback will update
+                // state.baselineTempo on every observed tempo change until we
+                // cross schedule[0].bar (window closes in list()). Seed with the
+                // currently-observed tempo as a best-guess fallback in case
+                // tempoCallback never fires (constant-tempo songs).
+                if (state.tempoSchedule.length > 0) {
+                    state.captureBaselineNext = true;
+                    state.baselineTempo = state.tempo;
+                }
+                post('  PLAY-START: re-armed tempo (idx=0, schedule.length=' + state.tempoSchedule.length + ', lastBar=' + state.lastBar + ', baselineSeed=' + state.baselineTempo + ')\n');
             }
             broadcastTransport();
             mgraphics.redraw();
@@ -438,6 +453,16 @@ function tempoCallback(args) {
         var t = parseFloat(ls.get('tempo'));
         if (t !== state.tempo) {
             state.tempo = t;
+            // Baseline capture: while the play-start window is open (set in
+            // transportCallback, closed in list() when bar reaches schedule[0].bar),
+            // record every observed tempo change. The last value seen before the
+            // window closes is the baseline restored on scrub-back into the
+            // pre-first-entry zone. Handles tempo automation ramps too — we keep
+            // updating until the window actually closes.
+            if (state.captureBaselineNext) {
+                state.baselineTempo = t;
+                post('  baseline updated: ' + t + ' BPM (capture window open)\n');
+            }
             broadcastTransport();
             mgraphics.redraw();
         }
@@ -550,11 +575,15 @@ function handleCommand(cmdStr) {
                     state.tempoSchedule = cmd.schedule.slice();  // copy — non-destructive: scanned via tempoFiredIdx
                     state.tempoFiredIdx = 0;
                     state.tempoFiredCount = 0;
+                    state.baselineTempo = null;
+                    state.captureBaselineNext = false;
                     post('  tempo_schedule loaded: ' + state.tempoSchedule.length + ' change(s)\n');
                 } else {
                     state.tempoSchedule = [];
                     state.tempoFiredIdx = 0;
                     state.tempoFiredCount = 0;
+                    state.baselineTempo = null;
+                    state.captureBaselineNext = false;
                     post('  tempo_schedule cleared\n');
                 }
                 break;
@@ -589,6 +618,28 @@ function list() {
                 state.tempoFiredIdx = 0;
                 state.tempoFiredCount = 0;
                 post('  REWIND: prevBar=' + prevBar + ' -> bar=' + bar + ' — re-armed tempo\n');
+                // If we rewound INTO the pre-first-entry zone and we have a
+                // captured baseline, restore it. Without this, the tempo would
+                // remain stuck at whatever the last fired schedule entry set it
+                // to — wrong for bars before the first programmed change.
+                if (state.baselineTempo !== null
+                    && state.tempoSchedule.length > 0
+                    && bar < state.tempoSchedule[0].bar) {
+                    try {
+                        var lsBl = new LiveAPI('live_set');
+                        lsBl.set('tempo', state.baselineTempo);
+                        post('  TEMPO @ bar ' + bar + ' -> ' + state.baselineTempo + ' BPM (baseline restore — pre-first-entry zone)\n');
+                    } catch (e) { post('  ERR baseline restore: ' + e + '\n'); }
+                }
+            }
+            // Close the baseline-capture window once we cross the first scheduled
+            // change. After this, tempoCallback fires are either user knob-twists
+            // or our own ls.set writes — neither should overwrite the baseline.
+            if (state.captureBaselineNext
+                && state.tempoSchedule.length > 0
+                && bar >= state.tempoSchedule[0].bar) {
+                state.captureBaselineNext = false;
+                post('  baseline window closed: final baselineTempo=' + state.baselineTempo + ' BPM\n');
             }
             // Tempo schedule: advance the pointer past every entry whose bar is
             // <= current bar; fire only the most recent overdue change.
