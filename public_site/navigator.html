@@ -252,14 +252,16 @@
       touch-action: manipulation;
     }
     .track-btn.active {
+      /* On — track is unmuted in Ableton */
       border-color: #4ecca3;
       background: rgba(78, 204, 163, 0.15);
       color: #4ecca3;
     }
-    .track-btn.active.warn {
-      border-color: #f5a623;
-      background: rgba(245, 166, 35, 0.15);
-      color: #f5a623;
+    .track-btn.off {
+      /* Off — track is muted in Ableton */
+      border-color: #e94560;
+      background: rgba(233, 69, 96, 0.15);
+      color: #e94560;
     }
     .track-btn:active { transform: scale(0.95); }
     .ctrl-btn {
@@ -812,15 +814,16 @@ function renderHealthBanner(unmatched) {
 var trackState = { "Original": null, "BT": null };
 
 function renderTrackButtons() {
+  // Green when on (active), red when off, neutral grey when state is unknown (null).
   var btnOrig = document.getElementById('trackOriginal');
   var btnBT = document.getElementById('trackBT');
   if (btnOrig) {
     btnOrig.classList.toggle('active', trackState["Original"] === true);
-    btnOrig.classList.remove('warn');
+    btnOrig.classList.toggle('off',    trackState["Original"] === false);
   }
   if (btnBT) {
     btnBT.classList.toggle('active', trackState["BT"] === true);
-    btnBT.classList.toggle('warn', trackState["BT"] === true);
+    btnBT.classList.toggle('off',    trackState["BT"] === false);
   }
 }
 

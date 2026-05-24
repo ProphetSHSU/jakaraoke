@@ -152,14 +152,16 @@
       touch-action: manipulation;
     }
     .track-btn.active {
+      /* On — track is unmuted in Ableton */
       border-color: #4ecca3;
       background: rgba(78, 204, 163, 0.15);
       color: #4ecca3;
     }
-    .track-btn.active.warn {
-      border-color: #f5a623;
-      background: rgba(245, 166, 35, 0.15);
-      color: #f5a623;
+    .track-btn.off {
+      /* Off — track is muted in Ableton */
+      border-color: #e94560;
+      background: rgba(233, 69, 96, 0.15);
+      color: #e94560;
     }
     .track-btn:active { transform: scale(0.95); }
     .settings-overlay {
@@ -426,6 +428,35 @@
       display: none;
     }
     .scroll-target-line.active { display: block; }
+    /* Bar label pinned to the right end of the target line.
+       Format: "27" when no offset; "27 (+8)" when scrolled forward 8 bars
+       past auto; "27 (-3)" when behind. The number outside parens is
+       Ableton's actual bar (ground truth for {bar:N} edits in song metadata);
+       the number inside parens is the offset in bars between Ableton and
+       the visual line. Hidden during waiting / set-break states. */
+    .scroll-target-line .bar-label {
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: rgba(0, 0, 0, 0.72);
+      color: #4ecca3;
+      font-size: 14px;
+      font-weight: 700;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      padding: 3px 9px;
+      border-radius: 8px;
+      border: 1px solid rgba(78, 204, 163, 0.5);
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+      pointer-events: none;
+      min-width: 28px; text-align: center;
+    }
+    .scroll-target-line .bar-label:empty { display: none; }
+    .scroll-target-line .bar-label.has-offset {
+      color: #f5a623;
+      border-color: rgba(245, 166, 35, 0.55);
+    }
 
     /* === CONNECTION === */
     .disconnected-banner {
@@ -610,7 +641,7 @@
   </div>
 
   <!-- Scroll target line -->
-  <div class="scroll-target-line" id="scrollTargetLine"></div>
+  <div class="scroll-target-line" id="scrollTargetLine"><span class="bar-label" id="scrollTargetBarLabel"></span></div>
 
   <!-- Song content -->
   <div class="health-banner" id="healthBanner"><details><summary id="healthSummary"></summary><ul id="healthList"></ul></details></div>
@@ -1041,19 +1072,37 @@ function handleSong(msg) {
   stopScrollLoop();
   showTargetLine(false);
   window.scrollTo(0, 0);
+
+  // Issue #4 fix (2026-05-24): when songs change mid-playback (Ableton scene
+  // auto-trigger, no fresh transport msg), playStartedAt was carrying the OLD
+  // song's clock value — getElapsed() returned a stale (large) number, and
+  // time-mode scrolling jumped to the bottom of the new song. Reset the time-
+  // clock state here so the new song starts from t=0 regardless of upstream
+  // transport messaging. The next transport msg from server will overwrite if
+  // Ableton's elapsed differs.
+  scrollState.playStartedAt = null;
+  scrollState.elapsedOffset = 0;
+  scrollState.userOffset = 0;
+
   requestAnimationFrame(function() {
     buildAnchors(song);
-    // If transport is already playing (e.g. late-joiner reconnect), resume scrolling
-    if (transportState === 'playing' && scrollState.playStartedAt !== null) {
+    // If Ableton is already playing this song, reseed the clock to "now, t=0"
+    // — the new song just started in Ableton, so it's at bar 1 / second 0.
+    if (transportState === 'playing') {
+      scrollState.playStartedAt = performance.now();
+      scrollState.elapsedOffset = 0;
       startScrollLoop();
       showTargetLine(true);
     }
+    updateBarLabel();
   });
 }
 
 function handleSetBreak(setNumber) {
   currentSongMeta = null;
   stopMetronome();
+  scrollState.currentBar = 0;
+  updateBarLabel();
   el.songContent.innerHTML =
     '<div style="display:flex;align-items:center;justify-content:center;min-height:60vh;flex-direction:column;gap:16px;">' +
     '<div style="font-size:42px;font-weight:700;color:var(--warning);">═══ SET BREAK ═══</div>' +
@@ -1067,6 +1116,8 @@ function handleSetBreak(setNumber) {
 function handleNoLyrics(title) {
   currentSongMeta = null;
   stopMetronome();
+  scrollState.currentBar = 0;
+  updateBarLabel();
   el.songContent.innerHTML =
     '<div style="display:flex;align-items:center;justify-content:center;min-height:60vh;flex-direction:column;gap:16px;">' +
     '<div style="font-size:48px;">\ud83c\udfb5</div>' +
@@ -1239,15 +1290,16 @@ function renderReadyState(players) {
 var trackState = { "Original": null, "BT": null };
 
 function renderTrackButtons() {
+  // Green when on (active), red when off, neutral grey when state is unknown (null).
   var btnOrig = document.getElementById('trackOriginal');
   var btnBT = document.getElementById('trackBT');
   if (btnOrig) {
     btnOrig.classList.toggle('active', trackState["Original"] === true);
-    btnOrig.classList.remove('warn');
+    btnOrig.classList.toggle('off',    trackState["Original"] === false);
   }
   if (btnBT) {
     btnBT.classList.toggle('active', trackState["BT"] === true);
-    btnBT.classList.toggle('warn', trackState["BT"] === true);
+    btnBT.classList.toggle('off',    trackState["BT"] === false);
   }
 }
 
@@ -1484,6 +1536,72 @@ function getTargetPixelY() {
   return interpolateAnchors(scrollState.timeAnchors, 'time', getElapsed());
 }
 
+// Inverse of interpolateAnchors: given a pixelY position on the page, find
+// the corresponding anchor key value (bar or time). Used to compute "what bar
+// is the visual target line currently showing" — the diagnostic that lets us
+// see the offset between Ableton's actual bar and where the line is on screen.
+function inverseInterpolateAnchors(anchors, key, pixelY) {
+  if (anchors.length === 0) return 0;
+  if (pixelY <= anchors[0].pixelY) return anchors[0][key];
+  if (pixelY >= anchors[anchors.length - 1].pixelY) return anchors[anchors.length - 1][key];
+  for (var i = 0; i < anchors.length - 1; i++) {
+    if (pixelY >= anchors[i].pixelY && pixelY < anchors[i + 1].pixelY) {
+      var dy = anchors[i + 1].pixelY - anchors[i].pixelY;
+      if (dy === 0) return anchors[i][key];
+      var frac = (pixelY - anchors[i].pixelY) / dy;
+      return anchors[i][key] + frac * (anchors[i + 1][key] - anchors[i][key]);
+    }
+  }
+  return anchors[anchors.length - 1][key];
+}
+
+// Estimated bar number at a given vertical pixel position on the page.
+// In bar mode: exact (inverse interpolate the bar anchors).
+// In time mode: convert pixelY → elapsed time → bar via the song's tempo.
+//   This is approximate (assumes constant tempo, ignores tempo_map), but
+//   useful for editing — the user can iterate by adding {bar:N} tags and
+//   watching the number sharpen.
+function computeBarAtPixelY(pixelY) {
+  if (scrollState.mode === 'bar' && scrollState.barAnchors.length > 1) {
+    return inverseInterpolateAnchors(scrollState.barAnchors, 'bar', pixelY);
+  }
+  if (scrollState.timeAnchors.length > 1 && scrollState.tempo > 0) {
+    var timeAtLine = inverseInterpolateAnchors(scrollState.timeAnchors, 'time', pixelY);
+    return 1 + (timeAtLine / 60) * scrollState.tempo / scrollState.bpb;
+  }
+  return scrollState.currentBar || 0;
+}
+
+// Update the bar label at the right edge of the scroll target line.
+// Shows Ableton's actual bar outside parens (ground truth for {bar:N} edits);
+// adds (+N)/(-N) offset inside parens when the line has drifted from auto.
+// Hidden during waiting state and when there's no song context yet.
+function updateBarLabel() {
+  var label = document.getElementById('scrollTargetBarLabel');
+  if (!label) return;
+
+  var abletonBar = scrollState.currentBar | 0;
+  if (abletonBar < 1 || !currentSongMeta) {
+    label.textContent = '';
+    label.classList.remove('has-offset');
+    return;
+  }
+
+  var lineY = window.scrollY + window.innerHeight * scrollState.targetRatio;
+  var lineBarFrac = computeBarAtPixelY(lineY);
+  var lineBar = Math.round(lineBarFrac);
+  var offset = lineBar - abletonBar;
+
+  if (offset === 0) {
+    label.textContent = String(abletonBar);
+    label.classList.remove('has-offset');
+  } else {
+    var sign = offset > 0 ? '+' : '';
+    label.textContent = abletonBar + ' (' + sign + offset + ')';
+    label.classList.add('has-offset');
+  }
+}
+
 function scrollTick() {
   if (transportState !== 'playing') return;
   var targetY = getTargetPixelY();
@@ -1499,6 +1617,10 @@ function scrollTick() {
     window.scrollTo(0, scrollY);
   }
 
+  // Refresh the bar label every frame (cheap text update; tracks both the
+  // playhead via currentBar and the visual offset via current scrollY).
+  updateBarLabel();
+
   var shouldContinue = scrollState.songDuration === 0 || getElapsed() < scrollState.songDuration;
   if (scrollState.mode === 'bar') shouldContinue = true; // bar mode runs until stopped
   if (shouldContinue) {
@@ -1511,7 +1633,25 @@ function handlePlayhead(msg) {
   scrollState.currentBar = msg.bar || 0;
   scrollState.currentBeat = msg.beat || 1;
   scrollState.playheadReceivedAt = performance.now();
+  // Refresh the bar label even when the rAF scrollTick isn't running
+  // (e.g. transport is paused and Ableton is sending playhead while idle).
+  updateBarLabel();
 }
+
+// Update bar label during user manual scrolling (even when transport is paused).
+// rAF-throttled — modern browsers fire scroll events at sub-frame frequency on
+// touch devices and this keeps the label snappy without over-updating.
+(function() {
+  var labelRafScheduled = false;
+  window.addEventListener('scroll', function() {
+    if (labelRafScheduled) return;
+    labelRafScheduled = true;
+    requestAnimationFrame(function() {
+      updateBarLabel();
+      labelRafScheduled = false;
+    });
+  }, { passive: true });
+})();
 
 // User touch detection for manual scroll offset
 (function() {
