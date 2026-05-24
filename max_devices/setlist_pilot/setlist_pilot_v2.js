@@ -18,6 +18,11 @@
 
 autowatch = 1;
 mgraphics.init();
+
+// Load marker — printed on every script (re)load. If you don't see this line
+// in the Max console after right-click → Reload, the device didn't actually
+// reload the new code (try closing + reopening the device, or restart Ableton).
+post('=== SP2 script loaded: ' + (new Date()).toISOString() + ' ===\n');
 mgraphics.relative_coords = 0;
 mgraphics.autofill = 0;
 
