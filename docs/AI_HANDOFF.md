@@ -23,6 +23,7 @@ lyrics and setlist state on tablets for the whole band.
 | **ECOSYSTEM.md** | `docs/ECOSYSTEM.md` | Full architecture, signal paths, config model, slug matcher |
 | **SET_STATE_BROADCASTER_SPEC.md** | `docs/SET_STATE_BROADCASTER_SPEC.md` | M4L device wire protocol (UDP 9899/9900) |
 | **SETLIST_PILOT_SPEC.md** | `docs/SETLIST_PILOT_SPEC.md` | Pedal→LiveAPI navigation device (deployed) |
+| **TEMPO_HANDLING.md** | `docs/TEMPO_HANDLING.md` | tempo_map / scene-tempo / deferTempoSet / SCRIPT_VERSION pattern (added 2026-05-24) |
 
 **ECOSYSTEM.md is the authoritative architecture reference.** If anything in
 this handoff conflicts with ECOSYSTEM.md, ECOSYSTEM.md wins.
