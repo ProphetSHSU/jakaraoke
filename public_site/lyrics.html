@@ -1254,6 +1254,14 @@ function handleTransport(msg) {
   el.btnPlay.classList.toggle('playing', transportState === 'playing');
   el.btnPlay.textContent = transportState === 'playing' ? '⏸' : '▶';
 
+  // Update scroll-engine tempo from every transport msg that carries one.
+  // Ableton broadcasts a fresh transport msg at each tempo-schedule event
+  // (e.g. bar 27 of 99 Red Balloons: 150 -> 194 BPM). Without this, the
+  // bar-extrapolation in getTargetPixelY() keeps using the song's nominal
+  // metadata tempo and lags reality, producing a per-measure jump as each
+  // playhead msg arrives and resyncs.
+  if (msg.tempo && msg.tempo > 0) scrollState.tempo = msg.tempo;
+
   // Scroll engine
   if (transportState === 'playing') {
     scrollState.elapsedOffset = msg.elapsed || 0;
