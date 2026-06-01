@@ -416,6 +416,22 @@
       position: fixed; top: 42px; left: 0; right: 0; z-index: 19;
     }
     .set-progress.visible { display: flex; }
+    body.preview-mode .set-progress { display: none !important; }
+
+    /* Preview mode banner — shown when displayed song != playing song.
+       Slot: top:42px (replaces set-progress while preview active). */
+    .preview-banner {
+      position: fixed; top: 42px; left: 0; right: 0; z-index: 21;
+      display: none;
+      align-items: center; justify-content: center; gap: 6px;
+      padding: 6px 16px; min-height: 30px; box-sizing: border-box;
+      background: var(--accent-song); color: #0a0a0a;
+      font-size: 13px; font-weight: 700;
+      letter-spacing: 0.3px;
+    }
+    .preview-banner.visible { display: flex; }
+    .preview-banner .pb-icon { font-size: 12px; }
+    .preview-banner .pb-name { font-style: italic; font-weight: 600; }
     .set-progress .bar {
       flex: 1; max-width: 160px; height: 3px;
       background: #1a1a2e; border-radius: 2px; overflow: hidden;
@@ -645,6 +661,13 @@
     <span id="setProgressTime"></span>
   </div>
 
+  <!-- Preview mode banner (visible when displayed song ≠ actually-playing song) -->
+  <div class="preview-banner" id="previewBanner">
+    <span class="pb-icon">▶</span>
+    <span>Now playing:</span>
+    <span class="pb-name" id="previewBannerSong"></span>
+  </div>
+
   <!-- Scroll target line -->
   <div class="scroll-target-line" id="scrollTargetLine"><span class="bar-label" id="scrollTargetBarLabel"></span></div>
 
@@ -780,6 +803,8 @@ var isReady = false;
 var serverState = null;
 var transportState = 'stopped';
 var currentSongMeta = null;
+var playingSongFilename = null;  // filename of song that's currently playing (decoupled from displayed)
+var playingSongTitle    = null;  // cached title for preview banner
 var fontScale = parseFloat(localStorage.getItem('lyrics_font_scale') || '1.0');
 
 // ---------- DOM ----------
@@ -1066,6 +1091,23 @@ function handleSong(msg) {
   var song = msg.song;
   currentSongMeta = song.metadata || {};
 
+  // Capture incoming filename BEFORE assignment, so we can compare to playing.
+  var newFilename = msg.filename || currentSongFilename;
+
+  // Preview mode: Ableton is playing one song, but the user (or another
+  // operator) has navigated to a different song. We display the new song
+  // for browsing but do NOT scroll, do NOT restart the metronome — the
+  // playing song's transport remains authoritative on its own clock.
+  var isPreview = (transportState === 'playing' &&
+                   playingSongFilename &&
+                   newFilename !== playingSongFilename);
+  // Returning live: navigated back to the song that's actually playing.
+  // We need to preserve the playhead state across buildAnchors (which resets
+  // scrollState.currentBar/Beat to 0).
+  var isReturningLive = (transportState === 'playing' &&
+                         playingSongFilename &&
+                         newFilename === playingSongFilename);
+
   // Editor: track filename and raw content
   if (msg.filename) currentSongFilename = msg.filename;
   if (msg.songRaw) currentSongRaw = msg.songRaw;
@@ -1081,15 +1123,26 @@ function handleSong(msg) {
   renderSongContent(song);
   renderNext();
 
-  // Start metronome from song tempo
-  var songTempo = (song.metadata && song.metadata.tempo) || 0;
-  if (songTempo > 0) startMetronome(songTempo);
-  else stopMetronome();
+  // Metronome: only restart if NOT in preview mode (preview shouldn't tick
+  // for a non-playing song).
+  if (!isPreview) {
+    var songTempo = (song.metadata && song.metadata.tempo) || 0;
+    if (songTempo > 0) startMetronome(songTempo);
+    else stopMetronome();
+  }
 
   // Reset scroll
   stopScrollLoop();
   showTargetLine(false);
   window.scrollTo(0, 0);
+
+  // Snapshot live playhead state before buildAnchors clobbers it (only used
+  // when returning to the playing song mid-flight).
+  var liveBar = scrollState.currentBar;
+  var liveBeat = scrollState.currentBeat;
+  var livePlayheadAt = scrollState.playheadReceivedAt;
+  var liveStartedAt = scrollState.playStartedAt;
+  var liveElapsedOffset = scrollState.elapsedOffset;
 
   // Issue #4 fix (2026-05-24): when songs change mid-playback (Ableton scene
   // auto-trigger, no fresh transport msg), playStartedAt was carrying the OLD
@@ -1105,14 +1158,31 @@ function handleSong(msg) {
 
   requestAnimationFrame(function() {
     buildAnchors(song);
-    // If Ableton is already playing this song, reseed the clock to "now, t=0"
-    // — the new song just started in Ableton, so it's at bar 1 / second 0.
-    if (transportState === 'playing') {
+
+    if (isReturningLive) {
+      // Restore the live playhead state captured above so we resume scrolling
+      // at the actual current bar (no waiting for next playhead msg).
+      scrollState.currentBar = liveBar;
+      scrollState.currentBeat = liveBeat;
+      scrollState.playheadReceivedAt = livePlayheadAt;
+      scrollState.playStartedAt = liveStartedAt;
+      scrollState.elapsedOffset = liveElapsedOffset;
+      hidePreviewBanner();
+      startScrollLoop();
+      showTargetLine(true);
+    } else if (isPreview) {
+      // Preview mode: do NOT scroll, do NOT show target line.
+      // User can scroll freely with finger/wheel.
+      showPreviewBanner();
+    } else if (transportState === 'playing') {
+      // Fresh play (transport already 'playing' but no playingSongFilename
+      // yet — first song after start). Reseed clock and start scrolling.
       scrollState.playStartedAt = performance.now();
       scrollState.elapsedOffset = 0;
       startScrollLoop();
       showTargetLine(true);
     }
+    // (else: stopped — nothing to do, scroll loop already stopped)
     updateBarLabel();
   });
 }
@@ -1120,6 +1190,7 @@ function handleSong(msg) {
 function handleSetBreak(setNumber) {
   currentSongMeta = null;
   stopMetronome();
+  hidePreviewBanner();
   scrollState.currentBar = 0;
   updateBarLabel();
   el.songContent.innerHTML =
@@ -1135,6 +1206,7 @@ function handleSetBreak(setNumber) {
 function handleNoLyrics(title) {
   currentSongMeta = null;
   stopMetronome();
+  hidePreviewBanner();
   scrollState.currentBar = 0;
   updateBarLabel();
   el.songContent.innerHTML =
@@ -1269,6 +1341,11 @@ function handleTransport(msg) {
 
   // Scroll engine
   if (transportState === 'playing') {
+    // Mark the currently-displayed song as the playing song. Any subsequent
+    // navigation to a different song enters preview mode.
+    playingSongFilename = currentSongFilename;
+    playingSongTitle    = (currentSongMeta && currentSongMeta.title) || '';
+    hidePreviewBanner();
     scrollState.elapsedOffset = msg.elapsed || 0;
     scrollState.playStartedAt = performance.now() - (scrollState.elapsedOffset * 1000);
     startScrollLoop();
@@ -1278,6 +1355,10 @@ function handleTransport(msg) {
     scrollState.elapsedOffset = msg.elapsed || 0;
     stopScrollLoop();
   } else {
+    // Stopped: clear playing-song tracking and exit any preview state.
+    playingSongFilename = null;
+    playingSongTitle    = null;
+    hidePreviewBanner();
     scrollState.elapsedOffset = 0;
     scrollState.playStartedAt = null;
     scrollState.userOffset = 0;
@@ -1652,7 +1733,11 @@ function updateBarLabel() {
   if (!label) return;
 
   var abletonBar = scrollState.currentBar | 0;
-  if (!currentSongMeta || abletonBar < 1) {
+  // Hide bar label entirely when previewing a non-playing song — the bar
+  // number reflects the playing song's clock, which is meaningless on the
+  // displayed song.
+  var inPreview = (playingSongFilename && currentSongFilename !== playingSongFilename);
+  if (!currentSongMeta || abletonBar < 1 || inPreview) {
     label.textContent = '';
     label.classList.remove('has-offset');
     return;
@@ -1755,6 +1840,21 @@ function stopScrollLoop() { if (scrollState.rafId) { cancelAnimationFrame(scroll
 function showTargetLine(vis) {
   el.scrollTargetLine.classList.toggle('active', vis);
   if (vis) el.scrollTargetLine.style.top = (window.innerHeight * scrollState.targetRatio) + 'px';
+}
+
+// ---------- Preview mode (displayed song != playing song) ----------
+function showPreviewBanner() {
+  document.body.classList.add('preview-mode');
+  var pb = document.getElementById('previewBanner');
+  var pbName = document.getElementById('previewBannerSong');
+  if (pbName) pbName.textContent = playingSongTitle || prettify(playingSongFilename) || '';
+  if (pb) pb.classList.add('visible');
+  showTargetLine(false);
+}
+function hidePreviewBanner() {
+  document.body.classList.remove('preview-mode');
+  var pb = document.getElementById('previewBanner');
+  if (pb) pb.classList.remove('visible');
 }
 
 // ---------- Utilities ----------
