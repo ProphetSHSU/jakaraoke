@@ -1334,6 +1334,7 @@ function renderNext() {
 
 // ---------- Transport ----------
 function handleTransport(msg) {
+  var prevState = transportState;
   transportState = msg.state || 'stopped';
   el.btnPlay.classList.toggle('playing', transportState === 'playing');
   el.btnPlay.textContent = transportState === 'playing' ? '⏸' : '▶';
@@ -1348,14 +1349,19 @@ function handleTransport(msg) {
 
   // Scroll engine
   if (transportState === 'playing') {
-    // Mark the currently-displayed song as the playing song. Any subsequent
-    // navigation to a different song enters preview mode.
-    playingSongFilename = currentSongFilename;
-    playingSongTitle    = (currentSongMeta && currentSongMeta.title) || '';
-    console.log('[preview] transport→playing — latched playingFile=' +
-                JSON.stringify(playingSongFilename) +
-                ' playingTitle=' + JSON.stringify(playingSongTitle));
-    hidePreviewBanner();
+    // Latch playingSongFilename ONLY on stopped→playing transition. The server
+    // re-broadcasts transport=playing after every loadSongBySceneName (to keep
+    // tempo/elapsed in sync), and re-latching would overwrite playingSongFilename
+    // with the navigated-to song — bad: Ableton is still playing the OLD song.
+    if (prevState !== 'playing') {
+      playingSongFilename = currentSongFilename;
+      playingSongTitle    = (currentSongMeta && currentSongMeta.title) || '';
+      console.log('[preview] transport stopped→playing — latched playingFile=' +
+                  JSON.stringify(playingSongFilename) +
+                  ' playingTitle=' + JSON.stringify(playingSongTitle));
+    }
+    // hidePreviewBanner only when displayed song matches playing song.
+    if (currentSongFilename === playingSongFilename) hidePreviewBanner();
     scrollState.elapsedOffset = msg.elapsed || 0;
     scrollState.playStartedAt = performance.now() - (scrollState.elapsedOffset * 1000);
     startScrollLoop();
