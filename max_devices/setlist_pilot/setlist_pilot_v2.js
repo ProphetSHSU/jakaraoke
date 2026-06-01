@@ -713,10 +713,45 @@ function list() {
 // Max message handlers (inlet 0)
 // ===========================================================================
 
+// ---------------------------------------------------------------------------
+// Phase 0 — FDA verification.
+// Enumerates two Dropbox song-repo paths via the Max `Folder` object to
+// confirm Full Disk Access is inherited from Live to the JS engine.
+// SUCCESS: both posts show non-zero counts.
+// FAILURE: either count is 0 (or an error is thrown). FDA must be granted to
+// Max/Live before Phase 1 can land.
+// TEMPORARY — remove in Phase 1 once device-side repo discovery is wired in.
+// ---------------------------------------------------------------------------
+function _phase0_fdaTest() {
+    var paths = [
+        '/Users/jake/Library/CloudStorage/Dropbox/WingPunchDB',
+        '/Users/jake/Library/CloudStorage/Dropbox/SoloSetDB'
+    ];
+    for (var i = 0; i < paths.length; i++) {
+        var p = paths[i];
+        try {
+            var f = new Folder(p);
+            var count = 0;
+            var first = [];
+            while (!f.end) {
+                count++;
+                if (first.length < 3) first.push(f.filename);
+                f.next();
+            }
+            f.close();
+            post('FDA_TEST: ' + p + ' -> ' + count + ' entries' +
+                 (first.length ? ' (first: ' + first.join(', ') + ')' : '') + '\n');
+        } catch (e) {
+            post('FDA_TEST: ' + p + ' -> ERROR ' + e + '\n');
+        }
+    }
+}
+
 function _safeInit() {
     if (state.ready) return;
     state.ready = true;
     post('  initializing (LiveAPI ready)\n');
+    _phase0_fdaTest();  // TEMPORARY — remove in Phase 1
     rebuildScenes();
     refreshCurrentIdx();
     setupObservers();
