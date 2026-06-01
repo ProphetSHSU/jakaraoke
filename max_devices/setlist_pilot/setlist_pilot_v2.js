@@ -26,7 +26,7 @@ mgraphics.init();
 // SCRIPT_VERSION is stamped into every consequential log line so we can always
 // confirm at a glance which build is running. Bump it whenever this file changes
 // in a way that affects runtime behavior.
-var SCRIPT_VERSION = "v2.2.1-defer-tempo-set-2026-05-24";
+var SCRIPT_VERSION = "v2.2.2-reset-song-time-2026-06-01";
 post('=== SP2 script loaded: ' + (new Date()).toISOString() + ' [' + SCRIPT_VERSION + '] ===\n');
 mgraphics.relative_coords = 0;
 mgraphics.autofill = 0;
@@ -284,6 +284,22 @@ function actPlay() {
         if (state.currentIdx < 0) refreshCurrentIdx();
         if (state.currentIdx < 0) {
             state.lastAction = 'PLAY'; state.lastDetail = '(no scene)'; return;
+        }
+        // Reset transport position to 0 BEFORE firing the scene. Ableton's
+        // current_song_time does NOT auto-rewind on scene fire or on stop+play
+        // (it keeps incrementing across the whole Live session). Without this,
+        // navigating between scenes via the navigator and pressing play causes
+        // plugsync to emit bar=N from the prior song, scrolling lyrics to the
+        // middle (or end) of the new song.
+        // Set in any state — Ableton allows mid-playback teleport. Combined
+        // with the immediately-following scene.fire(), the audible result is
+        // a clean play-start at bar 1.
+        try {
+            var ls = new LiveAPI('live_set');
+            ls.set('current_song_time', 0);
+            post('  actPlay [' + SCRIPT_VERSION + ']: reset current_song_time=0 before fire\n');
+        } catch (eReset) {
+            post('  WARN actPlay reset song_time failed: ' + eReset + '\n');
         }
         var sc = new LiveAPI('live_set scenes ' + state.currentIdx);
         sc.call('fire');
