@@ -1094,6 +1094,12 @@ function handleSong(msg) {
   // Capture incoming filename BEFORE assignment, so we can compare to playing.
   var newFilename = msg.filename || currentSongFilename;
 
+  // wasInPreview: were we just showing the preview banner? This is the
+  // discriminator between 'returning live from a preview' (must preserve
+  // playhead state across buildAnchors) and 'first play of displayed song'
+  // (no live state exists yet — start fresh).
+  var wasInPreview = document.body.classList.contains('preview-mode');
+
   // Preview mode: Ableton is playing one song, but the user (or another
   // operator) has navigated to a different song. We display the new song
   // for browsing but do NOT scroll, do NOT restart the metronome — the
@@ -1101,10 +1107,11 @@ function handleSong(msg) {
   var isPreview = (transportState === 'playing' &&
                    playingSongFilename &&
                    newFilename !== playingSongFilename);
-  // Returning live: navigated back to the song that's actually playing.
-  // We need to preserve the playhead state across buildAnchors (which resets
+  // Returning live: was in preview, navigated back to the song that's actually
+  // playing. Preserve the playhead state across buildAnchors (which resets
   // scrollState.currentBar/Beat to 0).
-  var isReturningLive = (transportState === 'playing' &&
+  var isReturningLive = (wasInPreview &&
+                         transportState === 'playing' &&
                          playingSongFilename &&
                          newFilename === playingSongFilename);
 
