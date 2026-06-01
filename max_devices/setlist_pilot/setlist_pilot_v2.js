@@ -722,6 +722,28 @@ function list() {
 // Max/Live before Phase 1 can land.
 // TEMPORARY — remove in Phase 1 once device-side repo discovery is wired in.
 // ---------------------------------------------------------------------------
+function _phase0_fdaTest_one(p, mode, configure) {
+    try {
+        var f = new Folder(p);
+        if (configure) configure(f);
+        var count = 0;
+        var first = [];
+        while (!f.end) {
+            var name = f.filename;
+            if (name) {
+                count++;
+                if (first.length < 3) first.push(name);
+            }
+            f.next();
+        }
+        f.close();
+        post('FDA_TEST[' + mode + ']: ' + p + ' -> ' + count + ' entries' +
+             (first.length ? ' (first: ' + first.join(', ') + ')' : '') + '\n');
+    } catch (e) {
+        post('FDA_TEST[' + mode + ']: ' + p + ' -> ERROR ' + e + '\n');
+    }
+}
+
 function _phase0_fdaTest() {
     var paths = [
         '/Users/jake/Library/CloudStorage/Dropbox/WingPunchDB',
@@ -729,21 +751,14 @@ function _phase0_fdaTest() {
     ];
     for (var i = 0; i < paths.length; i++) {
         var p = paths[i];
-        try {
-            var f = new Folder(p);
-            var count = 0;
-            var first = [];
-            while (!f.end) {
-                count++;
-                if (first.length < 3) first.push(f.filename);
-                f.next();
-            }
-            f.close();
-            post('FDA_TEST: ' + p + ' -> ' + count + ' entries' +
-                 (first.length ? ' (first: ' + first.join(', ') + ')' : '') + '\n');
-        } catch (e) {
-            post('FDA_TEST: ' + p + ' -> ERROR ' + e + '\n');
-        }
+        // Mode 1: default (probably patcher-only)
+        _phase0_fdaTest_one(p, 'default', null);
+        // Mode 2: typelist=[] (clear filter)
+        _phase0_fdaTest_one(p, 'typelist=[]', function(f) { f.typelist = []; });
+        // Mode 3: typelist=["cho"] (target ChordPro)
+        _phase0_fdaTest_one(p, 'typelist=[cho]', function(f) { f.typelist = ['cho']; });
+        // Mode 4: typelist=["cho","pro"] (both extensions)
+        _phase0_fdaTest_one(p, 'typelist=[cho,pro]', function(f) { f.typelist = ['cho', 'pro']; });
     }
 }
 
