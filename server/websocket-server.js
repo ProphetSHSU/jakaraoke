@@ -563,6 +563,50 @@ wsServer.on('request', function(request) {
           }, connection._playerName);
           return;
         }
+        // Preview load: a single client requests the content of a specific song
+        // for browser-side preview ONLY. Does NOT change Ableton's selected scene,
+        // does NOT touch transport, does NOT broadcast to other clients. The payload
+        // is marked preview:true so the client knows not to re-latch playingSongFilename.
+        if (parsed.type === 'previewLoad') {
+          var pfn = parsed.filename;
+          if (!pfn) {
+            connection.sendUTF(JSON.stringify({ type: 'previewLoad_result', ok: false, error: 'Missing filename' }));
+            return;
+          }
+          // Only allow filenames that are part of the active setList (defense vs. path traversal)
+          var inSetList = false;
+          for (var psi = 0; psi < setList.length; psi++) {
+            if (setList[psi] === pfn) { inSetList = true; break; }
+          }
+          if (!inSetList) {
+            console.log('previewLoad: filename not in setList: ' + pfn);
+            connection.sendUTF(JSON.stringify({ type: 'previewLoad_result', ok: false, error: 'Not in setList' }));
+            return;
+          }
+          var pPath = getSongPath(pfn);
+          if (!pPath) {
+            connection.sendUTF(JSON.stringify({ type: 'previewLoad_result', ok: false, error: 'No active library' }));
+            return;
+          }
+          try {
+            var pText = fs.readFileSync(pPath).toString('utf-8');
+            var pParsed = chordpro.parse(pText);
+            var pPayload = {
+              "command": 0,
+              "song": pParsed,
+              "songRaw": pText,
+              "filename": pfn,
+              "preview": true
+            };
+            connection.sendUTF(JSON.stringify(pPayload));
+            console.log('previewLoad: sent ' + pfn + ' to ' + (connection._playerName || 'unknown'));
+          } catch(pErr) {
+            console.error('previewLoad error:', pErr.message);
+            connection.sendUTF(JSON.stringify({ type: 'previewLoad_result', ok: false, error: pErr.message }));
+          }
+          return;
+        }
+
         // Save edited ChordPro content
         if (parsed.type === 'save_song') {
           var fn = parsed.filename;
@@ -581,7 +625,7 @@ wsServer.on('request', function(request) {
             console.log('Saved song: ' + fn);
             // Re-parse and broadcast to all clients
             var reParsed = chordpro.parse(content);
-            var rePayload = { "command": 0, "song": reParsed, "songRaw": content, "filename": fn };
+            var rePayload = { "command": 0, "song": reParsed, "songRaw": content, "filename": fn, "live": true };
             currentSongPayload = JSON.stringify(rePayload);
             for (var ri = 0; ri < remoteConnection.length; ri++) {
               remoteConnection[ri].sendUTF(currentSongPayload);
@@ -792,7 +836,8 @@ function sendSong(note) {
             "command": 0,
             "song": parsed,
             "songRaw": songText,
-            "filename": currentItem
+            "filename": currentItem,
+            "live": true
         }
 
         currentSongPayload = JSON.stringify(payload);
@@ -927,7 +972,7 @@ function loadSongBySceneName(sceneName, sceneIndex, sceneCount) {
             transport.tempo = parsed.metadata.tempo;
         }
 
-        var payload = { "command": 0, "song": parsed, "songRaw": songText, "filename": match.filename };
+        var payload = { "command": 0, "song": parsed, "songRaw": songText, "filename": match.filename, "live": true };
         currentSongPayload = JSON.stringify(payload);
         for (var i = 0; i < remoteConnection.length; i++) {
             remoteConnection[i].sendUTF(currentSongPayload);

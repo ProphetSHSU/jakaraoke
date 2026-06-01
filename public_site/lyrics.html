@@ -961,13 +961,13 @@ el.readyBadge.addEventListener('dblclick', function(e) {
 
 // ---------- Transport controls ----------
 el.btnPlay.addEventListener('click', function() { var act = transportState === 'playing' ? 'stop' : 'play'; wsSend({ type: 'command', action: act }); });
-el.btnNext.addEventListener("click", function() { wsSend({ type: "command", action: "next" }); });
+el.btnNext.addEventListener("click", function() { previewNavigateBy('next'); });
 // Goto dropdown
 el.gotoSelect = document.getElementById("gotoSelect");
 el.gotoSelect.addEventListener("change", function() {
   var idx = parseInt(this.value, 10);
   if (!isNaN(idx)) {
-    wsSend({ type: "command", action: "goto", index: idx });
+    previewGoto(idx);
   }
   this.value = ""; // reset to placeholder
 });
@@ -997,7 +997,7 @@ function populateGotoDropdown(setList) {
   }
   el.gotoSelect.innerHTML = html;
 }
-el.btnPrev.addEventListener("click", function() { wsSend({ type: "command", action: "prev" }); });
+el.btnPrev.addEventListener("click", function() { previewNavigateBy('prev'); });
 el.btnStop.addEventListener('click', function() { wsSend({ type: 'command', action: 'stop' }); });
 
 // ---------- Wake Lock (prevent screen dimming) ----------
@@ -1034,9 +1034,9 @@ el.btnStop.addEventListener('click', function() { wsSend({ type: 'command', acti
     if (Math.abs(dy) > maxVertical) return; // was a vertical scroll
     if (Math.abs(dx) < minDist) return; // too short
     if (dx < 0) {
-      wsSend({ type: "command", action: "next" }); // swipe left = next
+      previewNavigateBy('next'); // swipe left = next
     } else {
-      wsSend({ type: "command", action: "prev" }); // swipe right = prev
+      previewNavigateBy('prev'); // swipe right = prev
     }
   }, { passive: true });
 })();
@@ -1086,34 +1086,85 @@ function wsSend(obj) {
   if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
 }
 
+// ---------- Preview navigation (browser-only; does not change Ableton scene) ----------
+// All browser-initiated navigation flows through previewLoad. The server replies
+// to ONLY this connection with a payload marked preview:true. Ableton's selected
+// scene and other clients are unaffected. The "live" song (Ableton's selected
+// scene) updates only via authoritative live song msgs (loadSongBySceneName).
+function previewLoad(filename) {
+  if (!filename) return;
+  wsSend({ type: 'previewLoad', filename: filename });
+}
+function previewNavigateBy(direction) {
+  if (!serverState || !serverState.setList) return;
+  var list = serverState.setList;
+  // Locate the currently displayed song in the setList. Fall back to the server's
+  // songPointer if our displayed filename isn't found (defensive — shouldn't happen).
+  var currentIdx = -1;
+  for (var i = 0; i < list.length; i++) {
+    if (list[i] === currentSongFilename) { currentIdx = i; break; }
+  }
+  if (currentIdx === -1 && typeof serverState.songPointer === 'number') {
+    currentIdx = serverState.songPointer;
+  }
+  var step = (direction === 'next') ? 1 : -1;
+  var idx = currentIdx + step;
+  while (idx >= 0 && idx < list.length) {
+    if (typeof list[idx] === 'string') {
+      previewLoad(list[idx]);
+      return;
+    }
+    idx += step; // skip dividers
+  }
+  console.log('[preview] no song in direction ' + direction + ' from idx ' + currentIdx);
+}
+function previewGoto(index) {
+  if (!serverState || !serverState.setList) return;
+  var item = serverState.setList[index];
+  if (typeof item === 'string') previewLoad(item);
+}
+
 // ---------- Song rendering ----------
+// Two flavors of song msg arrive on this socket:
+//   * LIVE  (msg.live === true | unset)  — broadcast by server when Ableton's
+//                                            selected scene changes. ALL clients
+//                                            receive this. The new song is now
+//                                            the authoritative "playing" song.
+//   * PREVIEW (msg.preview === true)     — sent only to ONE client in response
+//                                            to that client's previewLoad. Used
+//                                            for browser-only navigation. Does
+//                                            NOT change Ableton's selected scene
+//                                            and does NOT alter playingSongFilename.
 function handleSong(msg) {
   var song = msg.song;
   currentSongMeta = song.metadata || {};
 
-  // Capture incoming filename BEFORE assignment, so we can compare to playing.
-  var newFilename = msg.filename || currentSongFilename;
+  var newFilename  = msg.filename || currentSongFilename;
+  var isPreviewMsg = (msg.preview === true);
 
-  // wasInPreview: were we just showing the preview banner? This is the
-  // discriminator between 'returning live from a preview' (must preserve
-  // playhead state across buildAnchors) and 'first play of displayed song'
-  // (no live state exists yet — start fresh).
+  // Whether we WERE in preview state before this msg (used to preserve scroll
+  // playhead when returning to live via browser-prev).
   var wasInPreview = document.body.classList.contains('preview-mode');
 
-  // Preview mode: Ableton is playing one song, but the user (or another
-  // operator) has navigated to a different song. We display the new song
-  // for browsing but do NOT scroll, do NOT restart the metronome — the
-  // playing song's transport remains authoritative on its own clock.
-  var isPreview = (transportState === 'playing' &&
-                   playingSongFilename &&
-                   newFilename !== playingSongFilename);
-  // Returning live: was in preview, navigated back to the song that's actually
-  // playing. Preserve the playhead state across buildAnchors (which resets
-  // scrollState.currentBar/Beat to 0).
-  var isReturningLive = (wasInPreview &&
-                         transportState === 'playing' &&
-                         playingSongFilename &&
-                         newFilename === playingSongFilename);
+  // After-this-msg flags:
+  //   enterPreview — preview msg lands on a different song than what's playing;
+  //                   show banner, freeze scrolling.
+  //   returnToLive — preview msg lands on the playing song (singer navigated
+  //                   back); preserve playhead, exit banner.
+  //   liveAdvance  — live msg from Ableton scene change; ALWAYS exit any preview
+  //                   state and update playingSongFilename to the new live song.
+  var enterPreview = isPreviewMsg && playingSongFilename && (newFilename !== playingSongFilename);
+  var returnToLive = isPreviewMsg && playingSongFilename && (newFilename === playingSongFilename);
+  var liveAdvance  = !isPreviewMsg;
+
+  // Live broadcasts are authoritative: update playingSongFilename to whatever
+  // Ableton's selected scene is now. (Preview msgs deliberately leave it alone.)
+  if (liveAdvance) {
+    playingSongFilename = newFilename;
+    playingSongTitle    = (currentSongMeta && currentSongMeta.title) || '';
+    console.log('[live] song advance — playingFile=' + JSON.stringify(playingSongFilename) +
+                ' playingTitle=' + JSON.stringify(playingSongTitle));
+  }
 
   // Editor: track filename and raw content
   if (msg.filename) currentSongFilename = msg.filename;
@@ -1130,9 +1181,9 @@ function handleSong(msg) {
   renderSongContent(song);
   renderNext();
 
-  // Metronome: only restart if NOT in preview mode (preview shouldn't tick
-  // for a non-playing song).
-  if (!isPreview) {
+  // Metronome: never restart in preview mode (the live song's metronome — if
+  // running — keeps ticking on its own).
+  if (!enterPreview) {
     var songTempo = (song.metadata && song.metadata.tempo) || 0;
     if (songTempo > 0) startMetronome(songTempo);
     else stopMetronome();
@@ -1144,7 +1195,7 @@ function handleSong(msg) {
   window.scrollTo(0, 0);
 
   // Snapshot live playhead state before buildAnchors clobbers it (only used
-  // when returning to the playing song mid-flight).
+  // when returning to the playing song mid-flight via preview navigation).
   var liveBar = scrollState.currentBar;
   var liveBeat = scrollState.currentBeat;
   var livePlayheadAt = scrollState.playheadReceivedAt;
@@ -1166,9 +1217,10 @@ function handleSong(msg) {
   requestAnimationFrame(function() {
     buildAnchors(song);
 
-    if (isReturningLive) {
-      // Restore the live playhead state captured above so we resume scrolling
-      // at the actual current bar (no waiting for next playhead msg).
+    if (returnToLive && wasInPreview && transportState === 'playing') {
+      // Singer navigated back to the playing song from preview. Restore the
+      // live playhead state captured above so scrolling resumes at the actual
+      // current bar (no waiting for next playhead msg).
       scrollState.currentBar = liveBar;
       scrollState.currentBeat = liveBeat;
       scrollState.playheadReceivedAt = livePlayheadAt;
@@ -1177,19 +1229,24 @@ function handleSong(msg) {
       hidePreviewBanner();
       startScrollLoop();
       showTargetLine(true);
-    } else if (isPreview) {
-      // Preview mode: do NOT scroll, do NOT show target line.
-      // User can scroll freely with finger/wheel.
-      showPreviewBanner();
-    } else if (transportState === 'playing') {
-      // Fresh play (transport already 'playing' but no playingSongFilename
-      // yet — first song after start). Reseed clock and start scrolling.
-      scrollState.playStartedAt = performance.now();
-      scrollState.elapsedOffset = 0;
-      startScrollLoop();
-      showTargetLine(true);
+    } else if (enterPreview) {
+      // Preview mode: don't scroll, don't show target line. Banner guides the
+      // singer back. (Only show the banner if transport is actually playing —
+      // a "Now playing: X" banner during a stopped transport is misleading.)
+      if (transportState === 'playing') showPreviewBanner();
+      else hidePreviewBanner();
+    } else {
+      // Live advance OR preview-back-while-stopped — exit any preview state.
+      hidePreviewBanner();
+      if (transportState === 'playing') {
+        // Live song change while transport is rolling. Reseed clock and scroll.
+        scrollState.playStartedAt = performance.now();
+        scrollState.elapsedOffset = 0;
+        startScrollLoop();
+        showTargetLine(true);
+      }
+      // (else: stopped — scroll loop already stopped)
     }
-    // (else: stopped — nothing to do, scroll loop already stopped)
     updateBarLabel();
   });
 }
@@ -1333,8 +1390,11 @@ function renderNext() {
 }
 
 // ---------- Transport ----------
+// playingSongFilename is now exclusively maintained by handleSong's "live" branch
+// — every Ableton scene change broadcasts a live song msg that updates it before
+// the accompanying transport msg arrives. handleTransport just toggles scroll/
+// metronome and shows/hides the banner based on the displayed-vs-playing relation.
 function handleTransport(msg) {
-  var prevState = transportState;
   transportState = msg.state || 'stopped';
   el.btnPlay.classList.toggle('playing', transportState === 'playing');
   el.btnPlay.textContent = transportState === 'playing' ? '⏸' : '▶';
@@ -1347,33 +1407,35 @@ function handleTransport(msg) {
   // playhead msg arrives and resyncs.
   if (msg.tempo && msg.tempo > 0) scrollState.tempo = msg.tempo;
 
-  // Scroll engine
+  // displayedIsLive: are we showing the same song Ableton is playing?
+  // When false, we're in preview-from-browser state; banner shows, scroll freezes.
+  var displayedIsLive = (currentSongFilename === playingSongFilename);
+
   if (transportState === 'playing') {
-    // Latch playingSongFilename ONLY on stopped→playing transition. The server
-    // re-broadcasts transport=playing after every loadSongBySceneName (to keep
-    // tempo/elapsed in sync), and re-latching would overwrite playingSongFilename
-    // with the navigated-to song — bad: Ableton is still playing the OLD song.
-    if (prevState !== 'playing') {
-      playingSongFilename = currentSongFilename;
-      playingSongTitle    = (currentSongMeta && currentSongMeta.title) || '';
-      console.log('[preview] transport stopped→playing — latched playingFile=' +
-                  JSON.stringify(playingSongFilename) +
-                  ' playingTitle=' + JSON.stringify(playingSongTitle));
+    if (displayedIsLive) {
+      hidePreviewBanner();
+      scrollState.elapsedOffset = msg.elapsed || 0;
+      scrollState.playStartedAt = performance.now() - (scrollState.elapsedOffset * 1000);
+      startScrollLoop();
+      showTargetLine(true);
+      if (msg.tempo && msg.tempo > 0) startMetronome(msg.tempo);
+    } else {
+      // Singer is previewing while Ableton is playing the live song. Show
+      // banner, freeze scroll on the previewed (non-live) song.
+      showPreviewBanner();
+      stopScrollLoop();
+      showTargetLine(false);
     }
-    // hidePreviewBanner only when displayed song matches playing song.
-    if (currentSongFilename === playingSongFilename) hidePreviewBanner();
-    scrollState.elapsedOffset = msg.elapsed || 0;
-    scrollState.playStartedAt = performance.now() - (scrollState.elapsedOffset * 1000);
-    startScrollLoop();
-    showTargetLine(true);
-    if (msg.tempo && msg.tempo > 0) startMetronome(msg.tempo);
   } else if (transportState === 'paused') {
     scrollState.elapsedOffset = msg.elapsed || 0;
     stopScrollLoop();
+    // Banner: even paused, keep the preview indicator if the singer is on a
+    // different song than the (paused) live song.
+    if (displayedIsLive) hidePreviewBanner();
   } else {
-    // Stopped: clear playing-song tracking and exit any preview state.
-    playingSongFilename = null;
-    playingSongTitle    = null;
+    // Stopped. Don't clear playingSongFilename — it still tracks Ableton's
+    // last known scene so the user can return to it via preview navigation.
+    // Hide banner: nothing is "now playing" while stopped.
     hidePreviewBanner();
     scrollState.elapsedOffset = 0;
     scrollState.playStartedAt = null;
