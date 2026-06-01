@@ -728,6 +728,10 @@ function _phase0_fdaTest_one(p, mode, configure) {
         if (configure) configure(f);
         var count = 0;
         var first = [];
+        // call next() before reading filename — alternative iteration model
+        if (mode.indexOf('nextFirst') === 0) {
+            f.next();
+        }
         while (!f.end) {
             var name = f.filename;
             if (name) {
@@ -744,22 +748,42 @@ function _phase0_fdaTest_one(p, mode, configure) {
     }
 }
 
-function _phase0_fdaTest() {
-    var paths = [
-        '/Users/jake/Library/CloudStorage/Dropbox/WingPunchDB',
-        '/Users/jake/Library/CloudStorage/Dropbox/SoloSetDB'
-    ];
-    for (var i = 0; i < paths.length; i++) {
-        var p = paths[i];
-        // Mode 1: default (probably patcher-only)
-        _phase0_fdaTest_one(p, 'default', null);
-        // Mode 2: typelist=[] (clear filter)
-        _phase0_fdaTest_one(p, 'typelist=[]', function(f) { f.typelist = []; });
-        // Mode 3: typelist=["cho"] (target ChordPro)
-        _phase0_fdaTest_one(p, 'typelist=[cho]', function(f) { f.typelist = ['cho']; });
-        // Mode 4: typelist=["cho","pro"] (both extensions)
-        _phase0_fdaTest_one(p, 'typelist=[cho,pro]', function(f) { f.typelist = ['cho', 'pro']; });
+function _phase0_fileTest(filepath) {
+    // Direct File-object open: most direct FDA probe.
+    try {
+        var ff = new File(filepath, 'read');
+        if (ff.isopen) {
+            var sz = ff.eof;
+            ff.close();
+            post('FDA_TEST[File.open]: ' + filepath + ' -> OK (' + sz + ' bytes)\n');
+        } else {
+            post('FDA_TEST[File.open]: ' + filepath + ' -> NOT OPEN (FDA likely blocked)\n');
+        }
+    } catch (e) {
+        post('FDA_TEST[File.open]: ' + filepath + ' -> ERROR ' + e + '\n');
     }
+}
+
+function _phase0_fdaTest() {
+    // Control path — Live owns this, definitely no FDA needed
+    var control = '/Users/jake/Music/Ableton';
+    var dropbox = '/Users/jake/Library/CloudStorage/Dropbox/WingPunchDB';
+
+    post('--- FDA probe: control path (~/Music/Ableton) ---\n');
+    _phase0_fdaTest_one(control, 'default', null);
+    _phase0_fdaTest_one(control, 'typelist=[]', function(f) { f.typelist = []; });
+
+    post('--- FDA probe: Dropbox CloudStorage ---\n');
+    _phase0_fdaTest_one(dropbox, 'default', null);
+    _phase0_fdaTest_one(dropbox, 'typelist=[]', function(f) { f.typelist = []; });
+    _phase0_fdaTest_one(dropbox, 'typelist=[cho]', function(f) { f.typelist = ['cho']; });
+    _phase0_fdaTest_one(dropbox, 'nextFirst+typelist=[]', function(f) { f.typelist = []; });
+    _phase0_fdaTest_one(dropbox, 'traverse+typelist=[]', function(f) { f.typelist = []; f.traverse = true; });
+
+    // Direct File-object FDA test against a known file in WingPunchDB
+    _phase0_fileTest('/Users/jake/Library/CloudStorage/Dropbox/WingPunchDB/99 Red Balloons.cho');
+    // Sanity: a file that should always be readable
+    _phase0_fileTest('/Users/jake/Music/Ableton/User Library/Presets/MIDI Effects/Max MIDI Effect/setlist_pilot_v2.js');
 }
 
 function _safeInit() {
