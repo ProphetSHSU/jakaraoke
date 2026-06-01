@@ -1091,18 +1091,27 @@ function wsSend(obj) {
 // to ONLY this connection with a payload marked preview:true. Ableton's selected
 // scene and other clients are unaffected. The "live" song (Ableton's selected
 // scene) updates only via authoritative live song msgs (loadSongBySceneName).
+// Server strips .txt from setList items before broadcasting state; live song
+// broadcasts keep the .txt suffix. Normalize at the client boundary so we can
+// compare filenames freely.
+function _withTxt(name) { return /\.txt$/i.test(name) ? name : name + '.txt'; }
+function _noTxt(name)   { return name.replace(/\.txt$/i, ''); }
+
 function previewLoad(filename) {
   if (!filename) return;
-  wsSend({ type: 'previewLoad', filename: filename });
+  // Server's previewLoad handler validates against the internal setList (which
+  // has .txt). Always send the canonical .txt form.
+  wsSend({ type: 'previewLoad', filename: _withTxt(filename) });
 }
 function previewNavigateBy(direction) {
   if (!serverState || !serverState.setList) return;
   var list = serverState.setList;
-  // Locate the currently displayed song in the setList. Fall back to the server's
-  // songPointer if our displayed filename isn't found (defensive — shouldn't happen).
+  // Locate the currently displayed song in the setList. setList items lack .txt
+  // while currentSongFilename carries it — strip both to compare.
+  var currentStripped = _noTxt(currentSongFilename || '');
   var currentIdx = -1;
   for (var i = 0; i < list.length; i++) {
-    if (list[i] === currentSongFilename) { currentIdx = i; break; }
+    if (typeof list[i] === 'string' && list[i] === currentStripped) { currentIdx = i; break; }
   }
   if (currentIdx === -1 && typeof serverState.songPointer === 'number') {
     currentIdx = serverState.songPointer;
