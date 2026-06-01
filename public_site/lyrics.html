@@ -1345,6 +1345,9 @@ function handleTransport(msg) {
     // navigation to a different song enters preview mode.
     playingSongFilename = currentSongFilename;
     playingSongTitle    = (currentSongMeta && currentSongMeta.title) || '';
+    console.log('[preview] transport→playing — latched playingFile=' +
+                JSON.stringify(playingSongFilename) +
+                ' playingTitle=' + JSON.stringify(playingSongTitle));
     hidePreviewBanner();
     scrollState.elapsedOffset = msg.elapsed || 0;
     scrollState.playStartedAt = performance.now() - (scrollState.elapsedOffset * 1000);
@@ -1847,7 +1850,11 @@ function showPreviewBanner() {
   document.body.classList.add('preview-mode');
   var pb = document.getElementById('previewBanner');
   var pbName = document.getElementById('previewBannerSong');
-  if (pbName) pbName.textContent = playingSongTitle || prettify(playingSongFilename) || '';
+  var displayName = playingSongTitle || prettify(playingSongFilename) || '';
+  console.log('[preview] show banner — playingFile=' + JSON.stringify(playingSongFilename) +
+              ' playingTitle=' + JSON.stringify(playingSongTitle) +
+              ' display=' + JSON.stringify(displayName));
+  if (pbName) pbName.textContent = displayName;
   if (pb) pb.classList.add('visible');
   showTargetLine(false);
 }

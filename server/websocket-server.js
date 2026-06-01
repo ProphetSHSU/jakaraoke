@@ -474,11 +474,14 @@ wsServer.on('request', function(request) {
     const connection = request.accept(null, request.origin);
     remoteConnection.push(connection);
 
-    // Send current state, transport, and ready-check to the newly connected client
+    // Send current state, song, transport, and ready-check to the newly connected
+    // client. Order matters: SONG must arrive before TRANSPORT so that on the
+    // client side, handleTransport can capture currentSongFilename / Meta when
+    // setting playingSongFilename for preview mode.
     connection.sendUTF(JSON.stringify(getStatePayload()));
+    if (currentSongPayload) connection.sendUTF(currentSongPayload);
     connection.sendUTF(JSON.stringify(getTransportPayload()));
     connection.sendUTF(JSON.stringify(additions.getReadyStatePayload()));
-    if (currentSongPayload) connection.sendUTF(currentSongPayload);
     if (lastTrackPayload) connection.sendUTF(lastTrackPayload);
 
     connection.on('message', function(message) {
@@ -778,12 +781,9 @@ function sendSong(note) {
         var songText = fs.readFileSync(songPath).toString('utf-8');
         var parsed = chordpro.parse(songText);
 
-        // Reset transport on song change & update tempo from metadata
-        if (transport.state !== 'stopped') {
-            transport.state = 'stopped';
-            transport.elapsedAtPause = 0;
-            transport.playStartedAt = null;
-        }
+        // Phase 2b: Ableton is source of truth. Selection-only scene changes
+        // (next/prev navigation via MIDI program change) must NOT touch
+        // transport.state — see loadSongBySceneName for full rationale.
         if (parsed.metadata.tempo) {
             transport.tempo = parsed.metadata.tempo;
         }
@@ -918,12 +918,11 @@ function loadSongBySceneName(sceneName, sceneIndex, sceneCount) {
         var setListIdx = setList.indexOf(match.filename);
         if (setListIdx >= 0) songPointer = setListIdx;
 
-        // Reset transport on song change
-        if (transport.state !== "stopped") {
-            transport.state = "stopped";
-            transport.elapsedAtPause = 0;
-            transport.playStartedAt = null;
-        }
+        // Phase 2b: Ableton is source of truth. Selection-only scene changes
+        // (next/prev navigation) must NOT touch transport.state — the previous
+        // song may still be actually playing in Ableton, and the lyrics client
+        // relies on transport.state remaining 'playing' so it can enter preview
+        // mode. Real transport changes arrive via separate M4L transport msgs.
         if (parsed.metadata.tempo) {
             transport.tempo = parsed.metadata.tempo;
         }
