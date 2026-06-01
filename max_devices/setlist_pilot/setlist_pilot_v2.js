@@ -130,8 +130,19 @@ var state = {
     tempoFiredIdx: 0,          // next index in tempoSchedule to fire — non-destructive pointer, reset on rewind/replay
     tempoFiredCount: 0,        // telemetry: how many tempo changes fired in current playthrough
     baselineTempo: null,       // captured Ableton tempo for the pre-first-entry zone — restored on scrub-back
-    ready: false
+    ready: false,
+    // Phase 1: device-side song-repo discovery (shadow mode — no behavior change yet)
+    repo: {
+        path: '/Users/jake/Library/CloudStorage/Dropbox/WingPunchDB',  // overridable via set_song_repo message
+        files: [],         // [string] — list of song filenames found in repo (basename only)
+        indexed: false,    // true once _buildRepoIndex has run successfully
+        scanCount: 0,      // total directory entries seen (incl. filtered out)
+        lastError: null    // last enum/filter error message, if any
+    }
 };
+
+// File extensions we treat as ChordPro-likely (case-insensitive)
+var REPO_TEXT_EXTS = ['txt', 'cho', 'pro', 'crd', 'chord'];
 
 // Tracks we broadcast mute state for (for navigator.html track toggles)
 var TRACKED_NAMES = ["Original", "BT"];
@@ -713,10 +724,72 @@ function list() {
 // Max message handlers (inlet 0)
 // ===========================================================================
 
+// ===========================================================================
+// Phase 1: Song-repo discovery (shadow mode)
+// ===========================================================================
+// Enumerates the configured song-repo directory via Max's Folder object,
+// filters to text-likely extensions, and stores the resulting filename list
+// in state.repo. No matching/slug logic yet — that lands in Phase 2.
+//
+// Trigger: called once from _safeInit() at device load.
+// Override: send `set_song_repo <path>` to the device to re-scan a different
+//           directory at runtime (testing / multi-band swap).
+// ===========================================================================
+function _buildRepoIndex() {
+    var p = state.repo.path;
+    state.repo.files = [];
+    state.repo.indexed = false;
+    state.repo.scanCount = 0;
+    state.repo.lastError = null;
+
+    if (!p) {
+        state.repo.lastError = 'no repo path configured';
+        post('  repo: NO PATH configured — set_song_repo <path> to enable\n');
+        return;
+    }
+
+    try {
+        var f = new Folder(p);
+        f.typelist = [];   // no filter; we filter by extension in JS
+        var files = [];
+        var scan = 0;
+        while (!f.end) {
+            var name = f.filename;
+            if (name) {
+                scan++;
+                var dot = name.lastIndexOf('.');
+                if (dot > 0) {
+                    var ext = name.substring(dot + 1).toLowerCase();
+                    for (var i = 0; i < REPO_TEXT_EXTS.length; i++) {
+                        if (ext === REPO_TEXT_EXTS[i]) { files.push(name); break; }
+                    }
+                }
+            }
+            f.next();
+        }
+        f.close();
+        files.sort();
+        state.repo.files = files;
+        state.repo.scanCount = scan;
+        state.repo.indexed = true;
+        post('  repo: ' + p + '\n');
+        post('  repo: indexed ' + files.length + ' songs (' + scan + ' entries scanned, ' +
+             (scan - files.length) + ' filtered out by extension)\n');
+        if (files.length > 0) {
+            var sample = files.slice(0, 3).join(', ');
+            post('  repo: sample files: ' + sample + '\n');
+        }
+    } catch (e) {
+        state.repo.lastError = String(e);
+        post('  repo: ERROR enumerating ' + p + ' — ' + e + '\n');
+    }
+}
+
 function _safeInit() {
     if (state.ready) return;
     state.ready = true;
     post('  initializing (LiveAPI ready)\n');
+    _buildRepoIndex();   // Phase 1: discover song repo, no matching yet
     rebuildScenes();
     refreshCurrentIdx();
     setupObservers();
@@ -795,6 +868,24 @@ function refresh() {
     broadcastTransport();
     broadcastTrackMutes();
     mgraphics.redraw();
+}
+
+// Phase 1: runtime repo-path override + manual rescan trigger.
+// Usage from a [message] box: `set_song_repo /path/to/repo`
+function set_song_repo(p) {
+    var newPath = String(p || '').trim();
+    if (!newPath) { post('  set_song_repo: empty path — ignored\n'); return; }
+    state.repo.path = newPath;
+    post('  set_song_repo: path -> ' + newPath + ', re-indexing...\n');
+    _buildRepoIndex();
+}
+
+// Phase 1: dump current repo state for diagnostics.
+// Usage from a [message] box: `repo_status`
+function repo_status() {
+    post('  repo_status: path=' + state.repo.path + '\n');
+    post('  repo_status: indexed=' + state.repo.indexed + ', files=' + state.repo.files.length +
+         ', scanned=' + state.repo.scanCount + ', error=' + (state.repo.lastError || '(none)') + '\n');
 }
 
 // ===========================================================================
