@@ -713,84 +713,10 @@ function list() {
 // Max message handlers (inlet 0)
 // ===========================================================================
 
-// ---------------------------------------------------------------------------
-// Phase 0 — FDA verification.
-// Enumerates two Dropbox song-repo paths via the Max `Folder` object to
-// confirm Full Disk Access is inherited from Live to the JS engine.
-// SUCCESS: both posts show non-zero counts.
-// FAILURE: either count is 0 (or an error is thrown). FDA must be granted to
-// Max/Live before Phase 1 can land.
-// TEMPORARY — remove in Phase 1 once device-side repo discovery is wired in.
-// ---------------------------------------------------------------------------
-function _phase0_fdaTest_one(p, mode, configure) {
-    try {
-        var f = new Folder(p);
-        if (configure) configure(f);
-        var count = 0;
-        var first = [];
-        // call next() before reading filename — alternative iteration model
-        if (mode.indexOf('nextFirst') === 0) {
-            f.next();
-        }
-        while (!f.end) {
-            var name = f.filename;
-            if (name) {
-                count++;
-                if (first.length < 3) first.push(name);
-            }
-            f.next();
-        }
-        f.close();
-        post('FDA_TEST[' + mode + ']: ' + p + ' -> ' + count + ' entries' +
-             (first.length ? ' (first: ' + first.join(', ') + ')' : '') + '\n');
-    } catch (e) {
-        post('FDA_TEST[' + mode + ']: ' + p + ' -> ERROR ' + e + '\n');
-    }
-}
-
-function _phase0_fileTest(filepath) {
-    // Direct File-object open: most direct FDA probe.
-    try {
-        var ff = new File(filepath, 'read');
-        if (ff.isopen) {
-            var sz = ff.eof;
-            ff.close();
-            post('FDA_TEST[File.open]: ' + filepath + ' -> OK (' + sz + ' bytes)\n');
-        } else {
-            post('FDA_TEST[File.open]: ' + filepath + ' -> NOT OPEN (FDA likely blocked)\n');
-        }
-    } catch (e) {
-        post('FDA_TEST[File.open]: ' + filepath + ' -> ERROR ' + e + '\n');
-    }
-}
-
-function _phase0_fdaTest() {
-    // Control path — Live owns this, definitely no FDA needed
-    var control = '/Users/jake/Music/Ableton';
-    var dropbox = '/Users/jake/Library/CloudStorage/Dropbox/WingPunchDB';
-
-    post('--- FDA probe: control path (~/Music/Ableton) ---\n');
-    _phase0_fdaTest_one(control, 'default', null);
-    _phase0_fdaTest_one(control, 'typelist=[]', function(f) { f.typelist = []; });
-
-    post('--- FDA probe: Dropbox CloudStorage ---\n');
-    _phase0_fdaTest_one(dropbox, 'default', null);
-    _phase0_fdaTest_one(dropbox, 'typelist=[]', function(f) { f.typelist = []; });
-    _phase0_fdaTest_one(dropbox, 'typelist=[cho]', function(f) { f.typelist = ['cho']; });
-    _phase0_fdaTest_one(dropbox, 'nextFirst+typelist=[]', function(f) { f.typelist = []; });
-    _phase0_fdaTest_one(dropbox, 'traverse+typelist=[]', function(f) { f.typelist = []; f.traverse = true; });
-
-    // Direct File-object FDA test against a known file in WingPunchDB
-    _phase0_fileTest('/Users/jake/Library/CloudStorage/Dropbox/WingPunchDB/99 Red Balloons.cho');
-    // Sanity: a file that should always be readable
-    _phase0_fileTest('/Users/jake/Music/Ableton/User Library/Presets/MIDI Effects/Max MIDI Effect/setlist_pilot_v2.js');
-}
-
 function _safeInit() {
     if (state.ready) return;
     state.ready = true;
     post('  initializing (LiveAPI ready)\n');
-    _phase0_fdaTest();  // TEMPORARY — remove in Phase 1
     rebuildScenes();
     refreshCurrentIdx();
     setupObservers();
