@@ -1,7 +1,7 @@
 # AI Handoff — Jakaraoke
 
 > **READ THIS FIRST** if you are an AI assistant picking up this project.
-> Updated 2026-05-11. Supersedes all prior versions.
+> Updated 2026-06-01 (preview/live nav model + path fixes). Supersedes all prior versions.
 
 ---
 
@@ -44,7 +44,7 @@ jakaraoke/
 │   ├── udp-bridge.js            ← UDP 9899/9900 integration (Phase 2b)
 │   ├── config.local.json        ← per-machine config (library paths, .als path)
 │   └── test-server-additions.js ← 31 tests
-├── views/
+├── public_site/                ← (formerly views/) — all browser-served HTML
 │   ├── lyrics.html              ← Jake/Lisa tablet view
 │   ├── navigator.html           ← Nate/Toni setlist navigation
 │   └── stage_monitor.html       ← legacy (being superseded)
@@ -155,7 +155,7 @@ Switching `activeLibrary` changes song repo + scene list together (different ban
 ```bash
 # From workspace:
 scp -r staging/server/* gigmac:~/source/jakaraoke/server/
-scp -r staging/views/* gigmac:~/source/jakaraoke/views/
+scp -r staging/public_site/* gigmac:~/source/jakaraoke/public_site/
 
 # On gigmac:
 cd ~/source/jakaraoke && ./stop.sh && ./start.sh
@@ -174,6 +174,64 @@ Then close + reopen Ableton (RAM cache flush required).
 - **CloudStorage:** NOT accessible via SSH (macOS sandbox). Jake runs server from Terminal.
 - **Log capture**: `ssh gigmac pbpaste` — pulls whatever is on gigmac's macOS clipboard. Jake copies Max console text (cmd-C) → we fetch. Replaces the email-to-self loop.
 - **UDP command injection** (smoke testing without running the server): send OSC address `/j` + type `,s` + JSON arg to 127.0.0.1:9900. See `SETLIST_PILOT_SPEC.md` → v2 section for a Python one-liner.
+
+---
+
+## Preview vs. Live Navigation (lyrics view, 2026-06-01)
+
+The lyrics view distinguishes **two flavors of song change** to support a singer
+glancing ahead during a song without disturbing the rest of the band.
+
+### Preview (transport playing only)
+- All browser-initiated nav (`btnNext`/`btnPrev`/swipe/`gotoSelect`) routes through
+  `previewLoad(filename)`.
+- While transport is **playing**, `previewLoad` sends a `previewLoad` WS msg.
+  Server replies to ONLY this client with a song msg tagged `preview: true`.
+  - `playingSongFilename` (the live/selected scene) is unchanged.
+  - Other clients (Jake / Nate / Toni) see nothing.
+  - Banner: "PREVIEW — playing: <song>".
+  - Scroll loop frozen, no metronome restart.
+- The first `btnPlay` strike during preview = **CUE**: sends `command:goto` for
+  the displayed song's setList index. M4L changes Ableton's selected scene; the
+  resulting live broadcast yanks all clients out of preview onto the new song.
+  If transport was playing, also sends `command:stop` first.
+- The second `btnPlay` strike (now `displayed === playing`) plays normally.
+
+### Live (transport stopped)
+- While transport is **stopped**, `previewLoad` short-circuits to `command:goto`
+  → M4L scene change → broadcast to ALL clients. "Preview" doesn't apply when
+  nothing is playing.
+- This is why navigation while stopped sees no banner and DOES propagate to
+  other clients (it's literally a live song change).
+
+### btnPlay invariants
+- `inPreview` gate is `transportState === 'playing' && currentSongFilename !==
+  playingSongFilename`. The `transport=playing` clause is critical: it ensures
+  any stale mismatch on a stopped transport is ignored, so "play means play".
+- No separate Cue button by design — the user-driven design is one button with
+  context-aware behavior.
+
+### .txt asymmetry gotcha
+- Server's `getStatePayload` STRIPS `.txt` from `setList` items.
+- Live song broadcasts (`msg.filename`) KEEP `.txt`.
+- `previewLoad` WS handler validates against the internal setList (with .txt).
+- Client uses `_withTxt(name)` / `_noTxt(name)` / `findSetListIdx(filename)` to
+  bridge. Direct string comparison between `currentSongFilename` and a setList
+  item will silently fail — always normalize.
+
+### Where to look in code
+- `public_site/lyrics.html`:
+  - `previewLoad`, `previewNavigateBy`, `previewGoto`, `findSetListIdx` (~1140)
+  - `btnPlay` click handler (~970)
+  - `handleSong` with `enterPreview` / `returnToLive` / `liveAdvance` (~1200)
+  - `showPreviewBanner` / `hidePreviewBanner` (~1990)
+- `server/websocket-server.js`: `previewLoad` handler near the command relay
+  block. State payload .txt strip is around line 285-287.
+
+### Commits that established this model
+- `0aa0de7` — feat: browser-only preview navigation, decoupled from Ableton
+- `9442387` — feat: btnPlay dual-behavior (cue first, play second)
+- `e10b143` — fix: navigation while stopped is live, not preview
 
 ---
 

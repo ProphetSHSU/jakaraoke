@@ -296,8 +296,8 @@ Ableton + pedal is the minimum viable path. Jakaraoke is a convenience layer.
 | Set State Broadcaster M4L | ⏭ Next to build | Spec: `docs/SET_STATE_BROADCASTER_SPEC.md` |
 | Server UDP bridge | 🔨 Staged | `staging/server/udp-bridge.js` |
 | Server slug matcher | ✅ Built (31 tests) | `staging/server/server-additions.js` |
-| Navigator view | ✅ Deployed | gigmac `views/navigator.html` |
-| Lyrics view | ✅ Deployed | gigmac `views/lyrics.html` |
+| Navigator view | ✅ Deployed | gigmac `public_site/navigator.html` |
+| Lyrics view | ✅ Deployed | gigmac `public_site/lyrics.html` |
 | Late-joiner sync | ⏭ Pending | Trivial addition to WS connect handler |
 
 ---
