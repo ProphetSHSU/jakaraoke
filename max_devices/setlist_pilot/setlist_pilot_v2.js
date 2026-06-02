@@ -688,7 +688,12 @@ function transportCallback(args) {
                     state.baselineTempo = state.tempo;
                     post('  PLAY-START [' + SCRIPT_VERSION + ']: scene ' + state.currentIdx + ' has no initial tempo (sceneTempo=' + sceneTempo + '); using current master tempo ' + state.tempo + ' as baseline\n');
                 }
-                post('  PLAY-START [' + SCRIPT_VERSION + ']: re-armed tempo (idx=0, schedule.length=' + state.tempoSchedule.length + ', lastBar=' + state.lastBar + ', sceneTempo=' + sceneTempo + ', baseline=' + state.baselineTempo + ')\n');
+                var pdump = '';
+                for (var pi = 0; pi < state.tempoSchedule.length; pi++) {
+                    if (pi) pdump += ', ';
+                    pdump += '{' + state.tempoSchedule[pi].bar + ':' + state.tempoSchedule[pi].bpm + '}';
+                }
+                post('  PLAY-START [' + SCRIPT_VERSION + ']: re-armed tempo (idx=0, schedule=[' + pdump + '], src=' + state.tempoSource + ', lastBar=' + state.lastBar + ', sceneTempo=' + sceneTempo + ', baseline=' + state.baselineTempo + ')\n');
             }
             broadcastTransport();
             mgraphics.redraw();
@@ -1234,6 +1239,14 @@ function _maybeReapplyForActiveSlug(slug) {
         state.tempoFiredCount = 0;
         state.baselineTempo = null;
         state.tempoSource = 'local';
+        var dump = '';
+        for (var i = 0; i < state.tempoSchedule.length; i++) {
+            if (i) dump += ', ';
+            dump += '{' + state.tempoSchedule[i].bar + ':' + state.tempoSchedule[i].bpm + '}';
+        }
+        post('  REAPPLY [' + slug + ']: schedule=[' + dump + '] source=local firedIdx=0\n');
+    } else {
+        post('  REAPPLY [' + slug + ']: no map — schedule unchanged (source=' + state.tempoSource + ')\n');
     }
 }
 

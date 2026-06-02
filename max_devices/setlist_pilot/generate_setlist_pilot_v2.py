@@ -70,12 +70,19 @@ def _live_numbox(obj_id, varname, prect, presrect, range_lo=0, range_hi=999):
 
 
 def _live_button(obj_id, varname, prect, presrect, label):
-    """Create a live.text in button mode (text shows on the button)."""
+    """Create a live.text in MOMENTARY button mode.
+
+    `mode: 0` is the critical attribute — without it, live.text defaults
+    to TOGGLE behavior, where the second-state text shows an icon-font
+    glyph (an "8" rendered in orange) instead of staying as a button.
+    `parameter_enable: 0` keeps the control out of Live's automation lanes
+    so we own all state in the JS dict."""
     return {"box": {
         "id": obj_id,
         "maxclass": "live.text",
         "varname": varname,
         "text": label,
+        "mode": 0,
         "patching_rect": prect,
         "presentation": 1,
         "presentation_rect": presrect,
@@ -86,16 +93,16 @@ def _live_button(obj_id, varname, prect, presrect, label):
                 "parameter_enable": 0,
                 "parameter_longname": varname,
                 "parameter_shortname": varname,
-                "parameter_type": 2,
-                "parameter_mode": 1
+                "parameter_type": 2
             }
         }
     }}
 
 
-def _comment(obj_id, varname, text, prect, presrect, fontsize=10):
-    """Create a comment that JS can update via .message('set', new_text)."""
-    return {"box": {
+def _comment(obj_id, varname, text, prect, presrect, fontsize=10, justify=0):
+    """Create a comment that JS can update via .message('set', new_text).
+    justify: 0=left (default), 1=center, 2=right."""
+    box = {
         "id": obj_id,
         "maxclass": "comment",
         "varname": varname,
@@ -105,7 +112,10 @@ def _comment(obj_id, varname, text, prect, presrect, fontsize=10):
         "presentation_rect": presrect,
         "numinlets": 1, "numoutlets": 0,
         "fontsize": fontsize
-    }}
+    }
+    if justify:
+        box["textjustification"] = justify
+    return {"box": box}
 
 
 def _prepend(obj_id, prect, prefix):
@@ -191,15 +201,17 @@ def build_editor_boxes(B, DY):
     boxes.append(_live_button("obj-btn-add-row", "btn_add_row",
                               [EDITOR_X, B + 100, 100, 17],
                               [EDITOR_X + 5, BTM_Y, 90, 17], "+ Add row"))
+    # Pagination: tight grouping with center-justified label
+    # prev[100..124] [page 130..170 centered] next[174..198]
     boxes.append(_live_button("obj-btn-pg-prev", "btn_pg_prev",
                               [EDITOR_X + 110, B + 100, 30, 17],
-                              [EDITOR_X + 105, BTM_Y, 24, 17], "<"))
+                              [EDITOR_X + 100, BTM_Y, 24, 17], "<"))
     boxes.append(_comment("obj-lbl-page", "lbl_page", "1/1",
-                          [EDITOR_X + 145, B + 100, 30, 14],
-                          [EDITOR_X + 132, BTM_Y + 2, 50, 12], fontsize=10))
+                          [EDITOR_X + 145, B + 100, 40, 14],
+                          [EDITOR_X + 130, BTM_Y + 2, 40, 12], fontsize=10, justify=1))
     boxes.append(_live_button("obj-btn-pg-next", "btn_pg_next",
                               [EDITOR_X + 180, B + 100, 30, 17],
-                              [EDITOR_X + 185, BTM_Y, 24, 17], ">"))
+                              [EDITOR_X + 174, BTM_Y, 24, 17], ">"))
 
     # Prepend wiring for bottom row + global controls
     HX = PX + 350   # patching X for these prepends (off to the right)
