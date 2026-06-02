@@ -137,12 +137,72 @@ var state = {
         files: [],         // [string] — list of song filenames found in repo (basename only)
         indexed: false,    // true once _buildRepoIndex has run successfully
         scanCount: 0,      // total directory entries seen (incl. filtered out)
-        lastError: null    // last enum/filter error message, if any
+        lastError: null,   // last enum/filter error message, if any
+        bySlug: {}         // Phase 2: { slug: filename } — built alongside files[]
     }
 };
 
 // File extensions we treat as ChordPro-likely (case-insensitive)
 var REPO_TEXT_EXTS = ['txt', 'cho', 'pro', 'crd', 'chord'];
+
+// ===========================================================================
+// Phase 2: Slug + scene-to-song matching (shadow mode)
+// ===========================================================================
+// Verbatim port of slugify() and the filename passes of matchSceneToSong()
+// from server/server-additions.js. We deliberately omit the metadata-title
+// fallback in this phase — that requires reading file contents and is rarely
+// hit when filenames already contain titles. If shadow-mode divergence logs
+// reveal we need it, we can add it later.
+//
+// Pure shadow telemetry: no UDP messages emitted, no behavior change. Logs
+// only what the device WOULD have picked, so we can compare against the
+// server's pick over time before cutting over in Phase 5.
+// ===========================================================================
+function slugify(name) {
+    if (!name) return '';
+    return String(name)
+        .toLowerCase()
+        .replace(/\.[a-z]+$/i, '')      // strip ANY trailing extension
+        .replace(/['\u2019]/g, '')      // strip ASCII + curly apostrophes
+        .replace(/[^a-z0-9]+/g, ' ')    // non-alphanumeric → space
+        .trim()
+        .replace(/\s+/g, ' ');          // collapse whitespace
+}
+
+// Match a scene name against the indexed repo. Returns:
+//   { filename: string|null, method: string, confidence: 'high'|'none' }
+// Methods: 'slug-exact', 'slug-substring', 'slug-substring-shortest', 'none'.
+function _matchSceneToSong(sceneName) {
+    if (!sceneName || !state.repo.indexed || state.repo.files.length === 0) {
+        return { filename: null, method: 'none', confidence: 'none' };
+    }
+    var sceneSlug = slugify(sceneName);
+    if (!sceneSlug) return { filename: null, method: 'none', confidence: 'none' };
+
+    var bySlug = state.repo.bySlug || {};
+    // Pass 1: exact slug match (constant-time lookup via index)
+    if (bySlug[sceneSlug]) {
+        return { filename: bySlug[sceneSlug], method: 'slug-exact', confidence: 'high' };
+    }
+
+    // Pass 2: scene slug is a substring of file slug at a word boundary
+    var escaped = sceneSlug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    var wordBoundaryRe = new RegExp('(^|\\s)' + escaped + '(\\s|$)');
+    var substringMatches = [];
+    for (var i = 0; i < state.repo.files.length; i++) {
+        var fileSlug = slugify(state.repo.files[i]);
+        if (wordBoundaryRe.test(fileSlug)) substringMatches.push(state.repo.files[i]);
+    }
+    if (substringMatches.length === 1) {
+        return { filename: substringMatches[0], method: 'slug-substring', confidence: 'high' };
+    }
+    if (substringMatches.length > 1) {
+        substringMatches.sort(function(a, b) { return slugify(a).length - slugify(b).length; });
+        return { filename: substringMatches[0], method: 'slug-substring-shortest', confidence: 'high' };
+    }
+
+    return { filename: null, method: 'none', confidence: 'none' };
+}
 
 // Tracks we broadcast mute state for (for navigator.html track toggles)
 var TRACKED_NAMES = ["Original", "BT"];
@@ -178,6 +238,17 @@ function broadcastSceneChange() {
         name: name,
         count: state.scenes.length
     });
+    // Phase 2: shadow-mode device-side match. Logs only — no behavior change.
+    if (name && state.repo.indexed) {
+        var m = _matchSceneToSong(name);
+        var slug = slugify(name);
+        if (m.filename) {
+            post("  match[shadow]: scene='" + name + "' slug='" + slug +
+                 "' -> '" + m.filename + "' (" + m.method + "/" + m.confidence + ")\n");
+        } else {
+            post("  match[shadow]: scene='" + name + "' slug='" + slug + "' -> NO MATCH\n");
+        }
+    }
 }
 
 var lastBroadcastScenesKey = null;  // change-detect cache
@@ -738,6 +809,7 @@ function list() {
 function _buildRepoIndex() {
     var p = state.repo.path;
     state.repo.files = [];
+    state.repo.bySlug = {};
     state.repo.indexed = false;
     state.repo.scanCount = 0;
     state.repo.lastError = null;
@@ -769,12 +841,25 @@ function _buildRepoIndex() {
         }
         f.close();
         files.sort();
+        // Phase 2: build slug → filename index. Last-write wins on duplicates
+        // (rare — would require two files differing only in punctuation/case).
+        var bySlug = {};
+        var dupes = 0;
+        for (var k = 0; k < files.length; k++) {
+            var slug = slugify(files[k]);
+            if (slug) {
+                if (bySlug[slug]) dupes++;
+                bySlug[slug] = files[k];
+            }
+        }
         state.repo.files = files;
+        state.repo.bySlug = bySlug;
         state.repo.scanCount = scan;
         state.repo.indexed = true;
         post('  repo: ' + p + '\n');
         post('  repo: indexed ' + files.length + ' songs (' + scan + ' entries scanned, ' +
-             (scan - files.length) + ' filtered out by extension)\n');
+             (scan - files.length) + ' filtered out by extension' +
+             (dupes ? ', ' + dupes + ' slug collision' + (dupes === 1 ? '' : 's') : '') + ')\n');
         if (files.length > 0) {
             var sample = files.slice(0, 3).join(', ');
             post('  repo: sample files: ' + sample + '\n');
@@ -884,8 +969,11 @@ function set_song_repo(p) {
 // Usage from a [message] box: `repo_status`
 function repo_status() {
     post('  repo_status: path=' + state.repo.path + '\n');
+    var slugCount = 0;
+    for (var k in state.repo.bySlug) slugCount++;
     post('  repo_status: indexed=' + state.repo.indexed + ', files=' + state.repo.files.length +
-         ', scanned=' + state.repo.scanCount + ', error=' + (state.repo.lastError || '(none)') + '\n');
+         ', slugs=' + slugCount + ', scanned=' + state.repo.scanCount +
+         ', error=' + (state.repo.lastError || '(none)') + '\n');
 }
 
 // ===========================================================================
