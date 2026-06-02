@@ -1528,7 +1528,9 @@ function handleTransport(msg) {
     scrollState.lastFrameScrollY = 0;
     stopScrollLoop();
     showTargetLine(false);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    // Don't yank the editor to the top if a stop arrives while editing.
+    // resyncScrollAfterEdit will land the user correctly on close.
+    if (!editorActive) window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 }
 
@@ -1859,6 +1861,45 @@ function rebuildScrollGeometry() {
   updateBarLabel();
 }
 
+// Called by closeEditor to re-establish the scroll engine after edit mode.
+// Defers to next frame so #songContent is back in flow before we read
+// offsetTop. Picks up any deferred layout-change rebuilds (chord/section
+// toggles or font slider changes that happened while the editor was open).
+//
+// Snap target: where the auto-scroll engine WOULD position the page right
+// now, given the current playhead state plus userOffset. This means:
+//   - Transport playing → page lands exactly where scrollTick would have
+//     drawn it next frame, then loop resumes seamlessly.
+//   - Transport stopped/paused → page lands at "current bar" position,
+//     which is bar 1 / time 0 if nothing has played yet (≡ top).
+function resyncScrollAfterEdit() {
+  requestAnimationFrame(function() {
+    // Cover any deferred geometry rebuilds queued during edit.
+    rebuildScrollGeometry();
+    scheduleScrollGeometryRebuild._deferred = false;
+
+    if (currentSongData) {
+      var targetY = getTargetPixelY();
+      var scrollY = Math.max(0, targetY - window.innerHeight * scrollState.targetRatio + scrollState.userOffset);
+      window.scrollTo(0, scrollY);
+      scrollState.lastFrameScrollY = scrollY;
+    } else {
+      // Set break or no-lyrics — back to top.
+      window.scrollTo(0, 0);
+      scrollState.lastFrameScrollY = 0;
+    }
+
+    // Resume scroll engine if appropriate.
+    var displayedIsLive = (currentSongFilename === playingSongFilename);
+    if (transportState === 'playing' && displayedIsLive && currentSongData) {
+      startScrollLoop();
+      showTargetLine(true);
+    }
+
+    updateBarLabel();
+  });
+}
+
 // Coalesce multiple rapid layout-change toggles into one rebuild on the next
 // animation frame (so we read offsetTop after the browser has applied the
 // new CSS / font size).
@@ -1867,6 +1908,14 @@ function scheduleScrollGeometryRebuild() {
   scheduleScrollGeometryRebuild._pending = true;
   requestAnimationFrame(function() {
     scheduleScrollGeometryRebuild._pending = false;
+    if (editorActive) {
+      // #songContent is display:none — every [data-si] node has
+      // offsetParent === null and findNextRendered falls back to
+      // ctn.scrollHeight (0 for a hidden container). Anchors would all be
+      // pixelY:0. Defer until close; resyncScrollAfterEdit runs the rebuild.
+      scheduleScrollGeometryRebuild._deferred = true;
+      return;
+    }
     rebuildScrollGeometry();
   });
 }
@@ -2010,6 +2059,13 @@ function userOffsetInBars() {
 function updateBarLabel() {
   var label = document.getElementById('scrollTargetBarLabel');
   if (!label) return;
+  // Editor freezes the scroll engine; the target line is hidden, but skip
+  // the work too (and clear any stale text in case CSS lets it peek through).
+  if (editorActive) {
+    label.textContent = '';
+    label.classList.remove('has-offset');
+    return;
+  }
 
   var abletonBar = scrollState.currentBar | 0;
   // Hide bar label entirely when previewing a non-playing song — the bar
@@ -2036,6 +2092,10 @@ function updateBarLabel() {
 
 function scrollTick() {
   if (transportState !== 'playing') return;
+  // Editor freezes the scroll engine entirely. Without this, the drift
+  // detector below would fold textarea/keyboard scrolling into userOffset,
+  // and window.scrollTo would fight cursor positioning in the textarea.
+  if (editorActive) return;
 
   // Drift detector: anything that changed window.scrollY since the last frame
   // (touch drag, wheel, trackpad, mouse, keyboard, etc.) is user input — fold
@@ -2114,7 +2174,13 @@ function handlePlayhead(msg) {
   }, { passive: true });
 })();
 
-function startScrollLoop() { stopScrollLoop(); scrollState.rafId = requestAnimationFrame(scrollTick); }
+function startScrollLoop() {
+  // Editor freezes the scroll engine. Block re-arming from transport msgs
+  // (e.g., another tablet hits play while this one is editing).
+  if (editorActive) return;
+  stopScrollLoop();
+  scrollState.rafId = requestAnimationFrame(scrollTick);
+}
 function stopScrollLoop() { if (scrollState.rafId) { cancelAnimationFrame(scrollState.rafId); scrollState.rafId = null; } }
 function showTargetLine(vis) {
   el.scrollTargetLine.classList.toggle('active', vis);
@@ -2180,6 +2246,11 @@ document.body.addEventListener('dblclick', function() {
     if (!currentSongFilename) return;
     editorActive = !editorActive;
     if (editorActive) {
+      // Freeze the scroll engine. scrollTick / startScrollLoop also early-
+      // return on editorActive (defense in depth) but cancelling the rAF
+      // here saves a frame of pointless drift-detector / offsetTop reads.
+      stopScrollLoop();
+      showTargetLine(false);
       elEdit.textarea.value = currentSongRaw;
       elEdit.container.classList.add('visible');
       elEdit.btn.classList.add('active');
@@ -2202,6 +2273,10 @@ document.body.addEventListener('dblclick', function() {
     elEdit.btn.classList.remove('active');
     el.songContent.style.display = "";
     el.readyBadge.style.display = "";
+    // Re-establish scroll position. Picks up any deferred layout-change
+    // rebuilds (chord/section toggles or font slider during edit) and
+    // snaps the page to where the auto-scroll target is right now.
+    resyncScrollAfterEdit();
   }
 
   function saveEditor() {
