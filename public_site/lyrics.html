@@ -970,12 +970,15 @@ el.readyBadge.addEventListener('dblclick', function(e) {
 //                   If transport was running, we also stop it first to avoid
 //                   the brief "scrolling new song against old audio" window.
 el.btnPlay.addEventListener('click', function() {
-  var inPreview = currentSongFilename && playingSongFilename &&
+  // Preview semantics only apply while transport is playing. On a stopped
+  // transport, any currentSongFilename != playingSongFilename mismatch is
+  // either stale state or a race window after a recent navigation — either
+  // way, 'play' should mean play, not cue.
+  var inPreview = transportState === 'playing' &&
+                  currentSongFilename && playingSongFilename &&
                   currentSongFilename !== playingSongFilename;
   if (inPreview) {
-    if (transportState === 'playing') {
-      wsSend({ type: 'command', action: 'stop' });
-    }
+    wsSend({ type: 'command', action: 'stop' });
     var idx = findSetListIdx(currentSongFilename);
     if (idx >= 0) {
       wsSend({ type: 'command', action: 'goto', index: idx });
@@ -1139,6 +1142,19 @@ function _noTxt(name)   { return name.replace(/\.txt$/i, ''); }
 
 function previewLoad(filename) {
   if (!filename) return;
+  // When transport is stopped, navigation is LIVE: change Ableton's scene
+  // and broadcast to all clients via command:goto. Preview semantics only
+  // matter while a song is playing — there's nothing to preview against on
+  // a stopped session, and stale preview state was tripping up btnPlay.
+  if (transportState !== 'playing') {
+    var idx = findSetListIdx(filename);
+    if (idx >= 0) {
+      wsSend({ type: 'command', action: 'goto', index: idx });
+      return;
+    }
+    // Fall through to preview if we can't resolve the index (shouldn't happen
+    // in practice; better to render something than render nothing).
+  }
   // Server's previewLoad handler validates against the internal setList (which
   // has .txt). Always send the canonical .txt form.
   wsSend({ type: 'previewLoad', filename: _withTxt(filename) });
