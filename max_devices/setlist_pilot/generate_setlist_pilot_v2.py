@@ -22,6 +22,246 @@ PAD_H = 160   # jsui canvas height (also used as patching y-offset reference)
               # open the device's Max editor (Edit button in the device header).
 
 
+# ============================================================================
+# Phase 6: tempo_maps editor pane — Live UI objects (live.numbox/button/comment)
+# ============================================================================
+# Layout (190px tall, ~760px wide):
+#   x=0..360 : existing jsui (setlist UI)
+#   x=370..620 : EDITOR column — match diagnostics + 4 row slots + pagination
+#   x=635..755 : GLOBAL column — clear/dump buttons + state mirror
+#
+# Wiring pattern: each control's outlet feeds a [prepend ui_<msg> [args...]]
+# whose output goes to [s ui_to_js]. Receiver [r ui_to_js] connects to jsui
+# inlet 0. JS handlers (ui_bar, ui_bpm, ui_del_row, ui_add_row, ui_pg_prev,
+# ui_pg_next, ui_clear_map, ui_dump) update state.tempoMaps and refresh UI.
+# JS pushes values back to controls via this.patcher.getnamed(varname).message('set', ...)
+
+EDITOR_X = 370    # left edge of editor column
+EDITOR_W = 250    # editor column width
+GLOBAL_X = 635    # left edge of global column
+GLOBAL_W = 120    # global column width
+
+
+def _live_numbox(obj_id, varname, prect, presrect, range_lo=0, range_hi=999):
+    """Create a live.numbox box. parameter_enable=0 keeps it out of Live's
+    automation lanes; we manage state in our own dict."""
+    return {"box": {
+        "id": obj_id,
+        "maxclass": "live.numbox",
+        "varname": varname,
+        "patching_rect": prect,
+        "presentation": 1,
+        "presentation_rect": presrect,
+        "numinlets": 1, "numoutlets": 4,
+        "outlettype": ["", "", "", "float"],
+        "saved_attribute_attributes": {
+            "valueof": {
+                "parameter_enable": 0,
+                "parameter_longname": varname,
+                "parameter_shortname": varname,
+                "parameter_type": 0,
+                "parameter_mmin": range_lo,
+                "parameter_mmax": range_hi,
+                "parameter_initial_enable": 1,
+                "parameter_initial": [0]
+            }
+        }
+    }}
+
+
+def _live_button(obj_id, varname, prect, presrect, label):
+    """Create a live.text in button mode (text shows on the button)."""
+    return {"box": {
+        "id": obj_id,
+        "maxclass": "live.text",
+        "varname": varname,
+        "text": label,
+        "patching_rect": prect,
+        "presentation": 1,
+        "presentation_rect": presrect,
+        "numinlets": 1, "numoutlets": 2,
+        "outlettype": ["", ""],
+        "saved_attribute_attributes": {
+            "valueof": {
+                "parameter_enable": 0,
+                "parameter_longname": varname,
+                "parameter_shortname": varname,
+                "parameter_type": 2,
+                "parameter_mode": 1
+            }
+        }
+    }}
+
+
+def _comment(obj_id, varname, text, prect, presrect, fontsize=10):
+    """Create a comment that JS can update via .message('set', new_text)."""
+    return {"box": {
+        "id": obj_id,
+        "maxclass": "comment",
+        "varname": varname,
+        "text": text,
+        "patching_rect": prect,
+        "presentation": 1,
+        "presentation_rect": presrect,
+        "numinlets": 1, "numoutlets": 0,
+        "fontsize": fontsize
+    }}
+
+
+def _prepend(obj_id, prect, prefix):
+    """[prepend <prefix>] — wraps an arg list with a function name + index."""
+    return {"box": {
+        "id": obj_id,
+        "maxclass": "newobj",
+        "text": "prepend " + prefix,
+        "patching_rect": prect,
+        "numinlets": 2, "numoutlets": 1,
+        "outlettype": [""]
+    }}
+
+
+def build_editor_boxes(B, DY):
+    """Build editor + global column boxes. Patcher coords sit below the
+    existing main patching area; presentation coords define on-device layout."""
+    # Patching-area Y for hidden helper objects (prepends, send/receive)
+    P_Y = B + 10 + DY*5 + 50  # below the dict object
+    PX = 5                     # restart x for hidden helpers
+    boxes = []
+
+    # ---- Hidden plumbing: a single [r ui_to_js] for all control messages ----
+    boxes.append({"box": {
+        "id": "obj-r-ui-to-js",
+        "maxclass": "newobj",
+        "text": "r ui_to_js",
+        "patching_rect": [PX, P_Y, 80, 22],
+        "numinlets": 0, "numoutlets": 1, "outlettype": [""]
+    }})
+    # The corresponding patchline ([r ui_to_js] -> jsui inlet 0) is added in build_editor_lines.
+
+    # ---- 4 editor rows: bar (live.numbox), bpm (live.numbox), delete (live.text button) ----
+    ROW_Y_BASE = 68    # presentation y for row 0
+    ROW_DY = 22        # vertical spacing between rows
+    BAR_X = EDITOR_X + 5
+    BAR_W = 70
+    BPM_X = EDITOR_X + 80
+    BPM_W = 70
+    DEL_X = EDITOR_X + 155
+    DEL_W = 24
+    for i in range(4):
+        py = ROW_Y_BASE + i * ROW_DY
+        # Patching coords (these objects' editing-area positions don't matter much)
+        bar_prect = [PX + 100, P_Y + (i*4)*22, 60, 19]
+        bpm_prect = [PX + 170, P_Y + (i*4)*22, 60, 19]
+        del_prect = [PX + 240, P_Y + (i*4)*22, 30, 19]
+        boxes.append(_live_numbox("obj-bar-row-%d" % i, "bar_row_%d" % i,
+                                   bar_prect, [BAR_X, py, BAR_W, 19]))
+        boxes.append(_live_numbox("obj-bpm-row-%d" % i, "bpm_row_%d" % i,
+                                   bpm_prect, [BPM_X, py, BPM_W, 19]))
+        boxes.append(_live_button("obj-del-row-%d" % i, "del_row_%d" % i,
+                                   del_prect, [DEL_X, py, DEL_W, 19], "X"))
+        # Per-row prepend boxes (route the outlet value into ui_to_js)
+        boxes.append(_prepend("obj-prep-bar-%d" % i,
+                              [PX + 100, P_Y + (i*4 + 1)*22, 100, 22], "ui_bar %d" % i))
+        boxes.append(_prepend("obj-prep-bpm-%d" % i,
+                              [PX + 170, P_Y + (i*4 + 1)*22, 100, 22], "ui_bpm %d" % i))
+        boxes.append(_prepend("obj-prep-del-%d" % i,
+                              [PX + 240, P_Y + (i*4 + 1)*22, 100, 22], "ui_del_row %d" % i))
+
+    # ---- Diagnostic labels (top of editor column) ----
+    boxes.append(_comment("obj-lbl-scene",  "lbl_scene",  "Scene: (none)",
+                          [EDITOR_X, B + 10, EDITOR_W, 16],
+                          [EDITOR_X, 2, EDITOR_W, 14], fontsize=11))
+    boxes.append(_comment("obj-lbl-match",  "lbl_match",  "-> (no match)",
+                          [EDITOR_X, B + 30, EDITOR_W, 16],
+                          [EDITOR_X, 18, EDITOR_W, 14], fontsize=10))
+    boxes.append(_comment("obj-lbl-method", "lbl_method", "Match: -",
+                          [EDITOR_X, B + 50, EDITOR_W, 16],
+                          [EDITOR_X, 34, EDITOR_W, 14], fontsize=10))
+    # Column header (static)
+    boxes.append(_comment("obj-lbl-hdr", "lbl_hdr", "Bar      BPM",
+                          [EDITOR_X, B + 70, EDITOR_W, 16],
+                          [EDITOR_X + 5, 52, 200, 14], fontsize=10))
+
+    # ---- Bottom row: add-row + pagination ----
+    BTM_Y = 158
+    boxes.append(_live_button("obj-btn-add-row", "btn_add_row",
+                              [EDITOR_X, B + 110, 100, 18],
+                              [EDITOR_X + 5, BTM_Y, 90, 18], "+ Add row"))
+    boxes.append(_live_button("obj-btn-pg-prev", "btn_pg_prev",
+                              [EDITOR_X + 110, B + 110, 30, 18],
+                              [EDITOR_X + 105, BTM_Y, 24, 18], "<"))
+    boxes.append(_comment("obj-lbl-page", "lbl_page", "1/1",
+                          [EDITOR_X + 145, B + 110, 30, 16],
+                          [EDITOR_X + 132, BTM_Y + 2, 50, 14], fontsize=11))
+    boxes.append(_live_button("obj-btn-pg-next", "btn_pg_next",
+                              [EDITOR_X + 180, B + 110, 30, 18],
+                              [EDITOR_X + 185, BTM_Y, 24, 18], ">"))
+
+    # Prepend wiring for bottom row + global controls
+    HX = PX + 350   # patching X for these prepends (off to the right)
+    boxes.append(_prepend("obj-prep-add-row", [HX, P_Y + 0,  120, 22], "ui_add_row"))
+    boxes.append(_prepend("obj-prep-pg-prev", [HX, P_Y + 25, 120, 22], "ui_pg_prev"))
+    boxes.append(_prepend("obj-prep-pg-next", [HX, P_Y + 50, 120, 22], "ui_pg_next"))
+    boxes.append(_prepend("obj-prep-clear",   [HX, P_Y + 75, 120, 22], "ui_clear_map"))
+    boxes.append(_prepend("obj-prep-dump",    [HX, P_Y + 100,120, 22], "ui_dump"))
+
+    # ---- GLOBAL column ----
+    boxes.append(_live_button("obj-btn-clear-map", "btn_clear_map",
+                              [GLOBAL_X, B + 10, 100, 18],
+                              [GLOBAL_X, 5, GLOBAL_W, 18], "Clear map"))
+    boxes.append(_live_button("obj-btn-dump", "btn_dump",
+                              [GLOBAL_X, B + 35, 100, 18],
+                              [GLOBAL_X, 26, GLOBAL_W, 18], "Dump all"))
+    boxes.append(_comment("obj-lbl-schema", "lbl_schema", "Schema: v1",
+                          [GLOBAL_X, B + 60, 100, 14],
+                          [GLOBAL_X, 52, GLOBAL_W, 14], fontsize=10))
+    boxes.append(_comment("obj-lbl-count", "lbl_count", "Maps: 0",
+                          [GLOBAL_X, B + 76, 100, 14],
+                          [GLOBAL_X, 68, GLOBAL_W, 14], fontsize=10))
+    boxes.append(_comment("obj-lbl-source", "lbl_source", "Source: none",
+                          [GLOBAL_X, B + 92, 100, 14],
+                          [GLOBAL_X, 84, GLOBAL_W, 14], fontsize=10))
+
+    # ---- Single [s ui_to_js] aggregator (all prepends feed into this send) ----
+    boxes.append({"box": {
+        "id": "obj-s-ui-to-js",
+        "maxclass": "newobj",
+        "text": "s ui_to_js",
+        "patching_rect": [PX + 480, P_Y, 80, 22],
+        "numinlets": 1, "numoutlets": 0
+    }})
+    return boxes
+
+
+def build_editor_lines():
+    """Wiring: control outlets -> prepends -> [s ui_to_js], and [r ui_to_js] -> jsui inlet 0."""
+    lines = []
+    # Receive aggregator → jsui inlet 0
+    lines.append({"patchline": {"source": ["obj-r-ui-to-js", 0], "destination": ["obj-jsui", 0]}})
+
+    # Per-row controls
+    for i in range(4):
+        lines.append({"patchline": {"source": ["obj-bar-row-%d" % i, 0], "destination": ["obj-prep-bar-%d" % i, 0]}})
+        lines.append({"patchline": {"source": ["obj-bpm-row-%d" % i, 0], "destination": ["obj-prep-bpm-%d" % i, 0]}})
+        lines.append({"patchline": {"source": ["obj-del-row-%d" % i, 0], "destination": ["obj-prep-del-%d" % i, 0]}})
+        lines.append({"patchline": {"source": ["obj-prep-bar-%d" % i, 0], "destination": ["obj-s-ui-to-js", 0]}})
+        lines.append({"patchline": {"source": ["obj-prep-bpm-%d" % i, 0], "destination": ["obj-s-ui-to-js", 0]}})
+        lines.append({"patchline": {"source": ["obj-prep-del-%d" % i, 0], "destination": ["obj-s-ui-to-js", 0]}})
+
+    # Bottom row + global controls → their prepends → send
+    pairs = [
+        ("obj-btn-add-row",  "obj-prep-add-row"),
+        ("obj-btn-pg-prev",  "obj-prep-pg-prev"),
+        ("obj-btn-pg-next",  "obj-prep-pg-next"),
+        ("obj-btn-clear-map","obj-prep-clear"),
+        ("obj-btn-dump",     "obj-prep-dump"),
+    ]
+    for src, prep in pairs:
+        lines.append({"patchline": {"source": [src, 0], "destination": [prep, 0]}})
+        lines.append({"patchline": {"source": [prep, 0], "destination": ["obj-s-ui-to-js", 0]}})
+    return lines
+
+
 def build_patcher(js_filename: str, w: int, h: int) -> dict:
     B = h + 10   # y-offset for patching area (below presentation canvas)
     DY = 30
@@ -142,43 +382,8 @@ def build_patcher(js_filename: str, w: int, h: int) -> dict:
             "numinlets": 1, "numoutlets": 4, "outlettype": ["dictionary", "", "", ""]
         }},
 
-        # Phase 3 tempo_maps editing surface (until Phase 6 UI lands).
-        # Each [message] box sends its text into js inlet 0 → handler.
-        # Patcher-window only (NOT presentation): Live caps device height
-        # at ~190px and the jsui already takes 160. Open the device's Max
-        # editor (Edit button in device header) to see/click these boxes.
-        {"box": {
-            "id": "obj-comment-tempomaps", "maxclass": "comment",
-            "text": "tempo_maps editing (Cmd-click msg text to edit, then click box to send):",
-            "patching_rect": [240, B + 10 + DY*6 + 15, 420, 18],
-            "numinlets": 1, "numoutlets": 0, "fontsize": 11
-        }},
-        {"box": {
-            "id": "obj-msg-tempomap-set", "maxclass": "message",
-            "text": "tempo_map_set 99-red-balloons 27 194",
-            "patching_rect": [240, B + 10 + DY*7 + 15, 320, 22],
-            "numinlets": 2, "numoutlets": 1, "outlettype": [""]
-        }},
-        {"box": {
-            "id": "obj-msg-tempomap-clear", "maxclass": "message",
-            "text": "tempo_map_clear 99-red-balloons",
-            "patching_rect": [240, B + 10 + DY*8 + 15, 320, 22],
-            "numinlets": 2, "numoutlets": 1, "outlettype": [""]
-        }},
-        {"box": {
-            "id": "obj-msg-tempomap-dump", "maxclass": "message",
-            "text": "tempo_map_dump",
-            "patching_rect": [240, B + 10 + DY*9 + 15, 150, 22],
-            "numinlets": 2, "numoutlets": 1, "outlettype": [""]
-        }},
-        {"box": {
-            "id": "obj-msg-tempomap-clear-all", "maxclass": "message",
-            "text": "tempo_map_clear_all",
-            "patching_rect": [400, B + 10 + DY*9 + 15, 160, 22],
-            "numinlets": 2, "numoutlets": 1, "outlettype": [""]
-        }},
-
     ]
+    boxes += build_editor_boxes(B, DY)
 
     lines = [
         # --- MIDI path: notein → pack → prepend → jsui inlet 0 ---
@@ -191,12 +396,6 @@ def build_patcher(js_filename: str, w: int, h: int) -> dict:
         # --- live.thisdevice → t b → jsui inlet 0 (bang = init) ---
         {"patchline": {"source": ["obj-livethisdev", 1], "destination": ["obj-trigger-init", 0]}},
         {"patchline": {"source": ["obj-trigger-init", 0], "destination": ["obj-jsui", 0]}},
-
-        # --- Phase 3 tempo_maps editing message boxes → jsui inlet 0 ---
-        {"patchline": {"source": ["obj-msg-tempomap-set", 0], "destination": ["obj-jsui", 0]}},
-        {"patchline": {"source": ["obj-msg-tempomap-clear", 0], "destination": ["obj-jsui", 0]}},
-        {"patchline": {"source": ["obj-msg-tempomap-dump", 0], "destination": ["obj-jsui", 0]}},
-        {"patchline": {"source": ["obj-msg-tempomap-clear-all", 0], "destination": ["obj-jsui", 0]}},
 
         # --- UDP IN: udpreceive → route /j → jsui inlet 0 ---
         {"patchline": {"source": ["obj-udpreceive", 0], "destination": ["obj-route-j", 0]}},
@@ -217,6 +416,7 @@ def build_patcher(js_filename: str, w: int, h: int) -> dict:
         {"patchline": {"source": ["obj-change-beat", 0], "destination": ["obj-pack-bb", 1]}},
         {"patchline": {"source": ["obj-pack-bb", 0], "destination": ["obj-jsui", 1]}},
     ]
+    lines += build_editor_lines()
 
     patcher = {
         "fileversion": 1,

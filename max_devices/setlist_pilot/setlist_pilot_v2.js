@@ -146,8 +146,16 @@ var state = {
     // the matched slug. In Phase 4 the server path will retire entirely.
     tempoMaps: {},
     tempoMapsLoaded: false,
-    tempoSource: 'none'        // 'local' | 'server' | 'none' — which map populated state.tempoSchedule
+    tempoSource: 'none',       // 'local' | 'server' | 'none' — which map populated state.tempoSchedule
+
+    // Phase 6: Editor pane state. The editor always edits the slug of the
+    // most recent matched scene. editorPage paginates through entries.
+    editorSlug: null,           // slug currently shown in editor UI
+    editorPage: 0,              // 0-indexed page (4 entries per page)
+    editorMatchInfo: null       // last match info { filename, method, confidence }
 };
+
+var EDITOR_ROWS_PER_PAGE = 4;
 
 // File extensions we treat as ChordPro-likely (case-insensitive)
 var REPO_TEXT_EXTS = ['txt', 'cho', 'pro', 'crd', 'chord'];
@@ -337,6 +345,12 @@ function broadcastSceneChange() {
         // Local map wins over server's set_tempo_schedule. If no local map, server
         // path remains active for compatibility (retires in Phase 4).
         _applyLocalTempoMap(slug);
+        // Phase 6: editor follows the matched scene. Reset to page 0 on scene change.
+        state.editorSlug = slug;
+        state.editorMatchInfo = m;
+        state.editorPage = 0;
+        _refreshEditorDiagnostics(name, m, slug);
+        _refreshEditorUI();
     }
 }
 
@@ -997,6 +1011,12 @@ function _safeInit() {
     broadcastTransport();
     broadcastTrackMutes();
     mgraphics.redraw();
+
+    // Phase 6: initial editor refresh — populates labels/numboxes even if no
+    // scene matched yet. (broadcastSceneChange handles the post-match refresh.)
+    _refreshEditorDiagnostics(null, null, null);
+    _refreshEditorUI();
+
     post('  ready — broadcasting on UDP:9899\n');
 }
 
@@ -1129,6 +1149,200 @@ function tempo_map_dump() {
         for (var i = 0; i < sched.length; i++) parts.push(sched[i].bar + ':' + sched[i].bpm);
         post('    \'' + slug + '\' -> [' + parts.join(', ') + ']\n');
     }
+}
+
+// ===========================================================================
+// Phase 6: Editor pane — Live UI handlers + refresh
+// ===========================================================================
+// Each control (live.numbox, live.text-button) sends [prepend ui_<name> [args]]
+// → [s ui_to_js] → [r ui_to_js] → jsui inlet 0 → handler function below.
+// Handlers mutate state.tempoMaps[state.editorSlug], save dict, refresh UI.
+// JS pushes values back to controls via this.patcher.getnamed(name).message('set', val)
+// — 'set' suppresses the outlet so we don't loop.
+
+// Helper: safely get a named patcher object. Returns null if not found
+// (e.g. during early init before patcher fully resolves).
+function _ed(name) {
+    try {
+        var p = this.patcher;
+        if (!p) return null;
+        return p.getnamed(name);
+    } catch (e) { return null; }
+}
+
+// Push a value or text into a named control, suppressing its outlet.
+function _edSet(name, value) {
+    try {
+        var obj = this.patcher.getnamed(name);
+        if (obj) obj.message('set', value);
+    } catch (e) {}
+}
+
+// Refresh the diagnostics labels (top of editor column).
+function _refreshEditorDiagnostics(sceneName, matchInfo, slug) {
+    if (!state.ready) return;
+    var sceneText = sceneName ? ('Scene: ' + sceneName) : 'Scene: (none)';
+    var matchText, methodText;
+    if (matchInfo && matchInfo.filename) {
+        matchText  = '-> ' + matchInfo.filename;
+        methodText = 'Match: ' + matchInfo.method + ' / ' + matchInfo.confidence;
+    } else {
+        matchText  = '-> (no match)';
+        methodText = 'Match: -';
+    }
+    _edSet('lbl_scene', sceneText);
+    _edSet('lbl_match', matchText);
+    _edSet('lbl_method', methodText);
+}
+
+// Refresh the row numboxes + page label + global state mirror.
+function _refreshEditorUI() {
+    if (!state.ready) return;
+    var slug = state.editorSlug;
+    var entries = (slug && state.tempoMaps[slug]) ? state.tempoMaps[slug] : [];
+    var totalPages = Math.max(1, Math.ceil(entries.length / EDITOR_ROWS_PER_PAGE));
+    if (state.editorPage >= totalPages) state.editorPage = totalPages - 1;
+    if (state.editorPage < 0) state.editorPage = 0;
+    var pageStart = state.editorPage * EDITOR_ROWS_PER_PAGE;
+    for (var i = 0; i < EDITOR_ROWS_PER_PAGE; i++) {
+        var entry = entries[pageStart + i];
+        var bar = entry ? (entry.bar | 0) : 0;
+        var bpm = entry ? Number(entry.bpm) : 0;
+        _edSet('bar_row_' + i, bar);
+        _edSet('bpm_row_' + i, bpm);
+    }
+    _edSet('lbl_page', (state.editorPage + 1) + '/' + totalPages);
+    var mapCount = 0;
+    for (var k in state.tempoMaps) mapCount++;
+    _edSet('lbl_count', 'Maps: ' + mapCount);
+    _edSet('lbl_source', 'Source: ' + state.tempoSource);
+}
+
+// Convert a row index (0..3) on the current page to an entry index in the slug's array.
+function _entryIdxForRow(rowIdx) {
+    return state.editorPage * EDITOR_ROWS_PER_PAGE + (rowIdx | 0);
+}
+
+// If the user is editing the currently-fired slug, re-apply the schedule
+// so changes take effect mid-song without waiting for next scene change.
+function _maybeReapplyForActiveSlug(slug) {
+    // Currently 'editorSlug' is always the most-recent matched scene's slug,
+    // so this fires for every edit. If that ever decouples, gate here.
+    if (slug && state.tempoMaps[slug]) {
+        state.tempoSchedule = state.tempoMaps[slug].slice().sort(function(a,b){ return a.bar - b.bar; });
+        state.tempoFiredIdx = 0;
+        state.tempoFiredCount = 0;
+        state.baselineTempo = null;
+        state.tempoSource = 'local';
+    }
+}
+
+// ---- Per-row UI handlers ----
+
+function ui_bar(rowIdx, value) {
+    var slug = state.editorSlug;
+    if (!slug) { post('  ui_bar: no editorSlug — ignoring (no scene matched yet)\n'); return; }
+    var entryIdx = _entryIdxForRow(rowIdx);
+    var entries = state.tempoMaps[slug] || [];
+    while (entries.length <= entryIdx) entries.push({bar: 0, bpm: 0});
+    entries[entryIdx].bar = parseInt(value) | 0;
+    state.tempoMaps[slug] = entries;
+    _saveTempoMapsToDict();
+    _maybeReapplyForActiveSlug(slug);
+    _refreshEditorUI();
+}
+
+function ui_bpm(rowIdx, value) {
+    var slug = state.editorSlug;
+    if (!slug) { post('  ui_bpm: no editorSlug — ignoring\n'); return; }
+    var entryIdx = _entryIdxForRow(rowIdx);
+    var entries = state.tempoMaps[slug] || [];
+    while (entries.length <= entryIdx) entries.push({bar: 0, bpm: 0});
+    entries[entryIdx].bpm = Number(value);
+    state.tempoMaps[slug] = entries;
+    _saveTempoMapsToDict();
+    _maybeReapplyForActiveSlug(slug);
+    _refreshEditorUI();
+}
+
+function ui_del_row(rowIdx) {
+    var slug = state.editorSlug;
+    if (!slug) { post('  ui_del_row: no editorSlug — ignoring\n'); return; }
+    var entryIdx = _entryIdxForRow(rowIdx);
+    var entries = state.tempoMaps[slug];
+    if (!entries || entryIdx >= entries.length) {
+        post('  ui_del_row: row=' + rowIdx + ' (entry=' + entryIdx + ') is empty — nothing to delete\n');
+        return;
+    }
+    entries.splice(entryIdx, 1);
+    if (entries.length === 0) {
+        delete state.tempoMaps[slug];
+    } else {
+        state.tempoMaps[slug] = entries;
+    }
+    _saveTempoMapsToDict();
+    _maybeReapplyForActiveSlug(slug);
+    _refreshEditorUI();
+    post('  ui_del_row: removed entry ' + entryIdx + ' for slug=\'' + slug + '\'\n');
+}
+
+// ---- Bottom-row UI handlers ----
+
+function ui_add_row() {
+    var slug = state.editorSlug;
+    if (!slug) { post('  ui_add_row: no editorSlug — fire a scene first\n'); return; }
+    var entries = state.tempoMaps[slug] || [];
+    entries.push({bar: 0, bpm: 0});
+    state.tempoMaps[slug] = entries;
+    _saveTempoMapsToDict();
+    // Jump to page containing the new entry
+    state.editorPage = Math.floor((entries.length - 1) / EDITOR_ROWS_PER_PAGE);
+    _refreshEditorUI();
+    post('  ui_add_row: appended empty entry to slug=\'' + slug + '\' (now ' + entries.length + ' entries)\n');
+}
+
+function ui_pg_prev() {
+    if (state.editorPage > 0) {
+        state.editorPage--;
+        _refreshEditorUI();
+    }
+}
+
+function ui_pg_next() {
+    var slug = state.editorSlug;
+    var entries = (slug && state.tempoMaps[slug]) ? state.tempoMaps[slug] : [];
+    var totalPages = Math.max(1, Math.ceil(entries.length / EDITOR_ROWS_PER_PAGE));
+    if (state.editorPage < totalPages - 1) {
+        state.editorPage++;
+        _refreshEditorUI();
+    }
+}
+
+// ---- Global column handlers ----
+
+function ui_clear_map() {
+    var slug = state.editorSlug;
+    if (!slug) { post('  ui_clear_map: no editorSlug — nothing to clear\n'); return; }
+    if (state.tempoMaps[slug]) {
+        delete state.tempoMaps[slug];
+        _saveTempoMapsToDict();
+        _maybeReapplyForActiveSlug(slug);  // will leave tempoSource='none' since map gone
+        // Note: maybeReapply would set source='local' — but since map is gone, fix up:
+        state.tempoSchedule = [];
+        state.tempoFiredIdx = 0;
+        state.tempoFiredCount = 0;
+        state.baselineTempo = null;
+        state.tempoSource = 'none';
+        post('  ui_clear_map: cleared slug=\'' + slug + '\'\n');
+    } else {
+        post('  ui_clear_map: slug=\'' + slug + '\' was already empty\n');
+    }
+    state.editorPage = 0;
+    _refreshEditorUI();
+}
+
+function ui_dump() {
+    tempo_map_dump();
 }
 
 // Phase 1: dump current repo state for diagnostics.
