@@ -178,10 +178,13 @@ def build_editor_boxes(B, DY):
     boxes.append(_comment("obj-lbl-method", "lbl_method", "Match: -",
                           [EDITOR_X, B + 42, EDITOR_W, 14],
                           [EDITOR_X, 27, EDITOR_W, 12], fontsize=10))
-    # Column header (static)
-    boxes.append(_comment("obj-lbl-hdr", "lbl_hdr", "Bar      BPM",
-                          [EDITOR_X, B + 58, EDITOR_W, 14],
-                          [EDITOR_X + 5, 41, 200, 12], fontsize=10))
+    # Column headers (static) — one per column, positioned over its numbox
+    boxes.append(_comment("obj-lbl-hdr-bar", "lbl_hdr_bar", "Bar",
+                          [EDITOR_X, B + 58, 70, 14],
+                          [BAR_X, 41, BAR_W, 12], fontsize=10))
+    boxes.append(_comment("obj-lbl-hdr-bpm", "lbl_hdr_bpm", "BPM",
+                          [EDITOR_X + 80, B + 58, 70, 14],
+                          [BPM_X, 41, BPM_W, 12], fontsize=10))
 
     # ---- Bottom row: add-row + pagination ----
     BTM_Y = 138    # tightened to fit under Live's ~160px usable presentation
