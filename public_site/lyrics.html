@@ -805,6 +805,7 @@ var isReady = false;
 var serverState = null;
 var transportState = 'stopped';
 var currentSongMeta = null;
+var currentSongData = null;     // full parsed song — kept so layout-change toggles can rebuild anchors
 var playingSongFilename = null;  // filename of song that's currently playing (decoupled from displayed)
 var playingSongTitle    = null;  // cached title for preview banner
 var fontScale = parseFloat(localStorage.getItem('lyrics_font_scale') || '1.0');
@@ -906,12 +907,15 @@ if (!playerName) {
     if (e.target === overlay) closeSettings();
   });
 
-  // Font size slider
+  // Font size slider — changing font scale resizes every line, shifting
+  // every anchor pixelY. Rebuild geometry alongside the visual change so
+  // auto-scroll stays locked to the correct lyric.
   fontSlider.addEventListener('input', function() {
     fontScale = parseInt(this.value, 10) / 100;
     fontVal.textContent = this.value + '%';
     localStorage.setItem('lyrics_font_scale', fontScale.toFixed(2));
     applyFontScale();
+    scheduleScrollGeometryRebuild();
   });
 
   // Toggle helpers
@@ -926,8 +930,11 @@ if (!playerName) {
     });
   }
 
-  wireToggle(chordToggle, 'showChords');
-  wireToggle(sectionToggle, 'showSections');
+  // Chord/section toggles change the rendered layout (display:none on
+  // .song-line.chords-only / .section-label) → anchor pixelY values held
+  // since song-load become stale. Rebuild geometry on the next frame.
+  wireToggle(chordToggle, 'showChords', scheduleScrollGeometryRebuild);
+  wireToggle(sectionToggle, 'showSections', scheduleScrollGeometryRebuild);
   wireToggle(metroToggle, 'showMetronome', function() {
     if (!prefs.showMetronome) stopMetronome();
     else if (currentSongMeta && currentSongMeta.tempo) startMetronome(currentSongMeta.tempo);
@@ -1213,6 +1220,7 @@ function previewGoto(index) {
 function handleSong(msg) {
   var song = msg.song;
   currentSongMeta = song.metadata || {};
+  currentSongData = song;  // cache full parsed song for in-flight anchor rebuilds (chord/section toggles)
 
   var newFilename  = msg.filename || currentSongFilename;
   var isPreviewMsg = (msg.preview === true);
@@ -1328,6 +1336,7 @@ function handleSong(msg) {
 
 function handleSetBreak(setNumber) {
   currentSongMeta = null;
+  currentSongData = null;
   stopMetronome();
   hidePreviewBanner();
   scrollState.currentBar = 0;
@@ -1344,6 +1353,7 @@ function handleSetBreak(setNumber) {
 
 function handleNoLyrics(title) {
   currentSongMeta = null;
+  currentSongData = null;
   stopMetronome();
   hidePreviewBanner();
   scrollState.currentBar = 0;
@@ -1749,10 +1759,113 @@ function dedup(arr, key) {
   return out;
 }
 
+// Local pixels-per-key density (pixels per bar, or pixels per second) at a
+// given key value. Used by rebuildScrollGeometry to translate userOffset
+// between pixel and key units across a layout change.
+function pixelsPerKeyAt(anchors, key, value) {
+  if (anchors.length < 2) return 0;
+  for (var i = 0; i < anchors.length - 1; i++) {
+    if (value >= anchors[i][key] && value < anchors[i + 1][key]) {
+      var dy = anchors[i + 1].pixelY - anchors[i].pixelY;
+      var dk = anchors[i + 1][key] - anchors[i][key];
+      return (dy > 0 && dk > 0) ? dy / dk : 0;
+    }
+  }
+  // Past last anchor — use last-segment density as fallback.
+  var last = anchors.length - 1;
+  var dy = anchors[last].pixelY - anchors[last - 1].pixelY;
+  var dk = anchors[last][key] - anchors[last - 1][key];
+  return (dy > 0 && dk > 0) ? dy / dk : 0;
+}
+
+// Rebuild scroll anchors against the CURRENT rendered layout. Call after any
+// in-flight change that resizes the lyrics body — chord/section toggles, font
+// scale slider. Without this, anchor pixelY values held since song-load time
+// are stale: getTargetPixelY interpolates against pre-toggle coordinates and
+// the auto-scroll lands on the wrong line.
+//
+// Preserves runtime state (bar/beat/play-clock) and translates userOffset
+// from pixels → key-units (bars or seconds) via the OLD density, then back
+// to pixels via the NEW density at the same playhead position. This keeps
+// Lisa's manual scroll INTENT (e.g. "two bars ahead") constant across the
+// toggle, even though the pixel value of that intent changes.
+//
+// Caller schedules via rAF so we read offsetTop AFTER the browser has applied
+// the new CSS classes / font size — see scheduleScrollGeometryRebuild.
+function rebuildScrollGeometry() {
+  if (!currentSongData) return;
+
+  // Snapshot live runtime state (buildAnchors zeroes most of these).
+  var snap = {
+    currentBar: scrollState.currentBar,
+    currentBeat: scrollState.currentBeat,
+    playheadReceivedAt: scrollState.playheadReceivedAt,
+    playStartedAt: scrollState.playStartedAt,
+    elapsedOffset: scrollState.elapsedOffset
+  };
+
+  // Convert userOffset (px) → key-units using PRE-rebuild density.
+  var preMode = scrollState.mode;
+  var savedOffsetKey = 0;
+  if (scrollState.userOffset !== 0) {
+    var preAnchors = preMode === 'bar' ? scrollState.barAnchors : scrollState.timeAnchors;
+    var preKey = preMode === 'bar' ? 'bar' : 'time';
+    var preValue = preMode === 'bar' ? (scrollState.currentBar || 1) : getElapsed();
+    var preDensity = pixelsPerKeyAt(preAnchors, preKey, preValue);
+    if (preDensity > 0) savedOffsetKey = scrollState.userOffset / preDensity;
+  }
+
+  // Rebuild against the new layout.
+  buildAnchors(currentSongData);
+
+  // Restore runtime state.
+  scrollState.currentBar = snap.currentBar;
+  scrollState.currentBeat = snap.currentBeat;
+  scrollState.playheadReceivedAt = snap.playheadReceivedAt;
+  scrollState.playStartedAt = snap.playStartedAt;
+  scrollState.elapsedOffset = snap.elapsedOffset;
+
+  // Convert key-units → px using POST-rebuild density. If mode flipped (rare:
+  // bar tags fell out because they were anchored on a now-hidden node), zero
+  // userOffset rather than misinterpret old units in new mode.
+  var postMode = scrollState.mode;
+  if (savedOffsetKey !== 0 && postMode === preMode) {
+    var postAnchors = postMode === 'bar' ? scrollState.barAnchors : scrollState.timeAnchors;
+    var postKey = postMode === 'bar' ? 'bar' : 'time';
+    var postValue = postMode === 'bar' ? (scrollState.currentBar || 1) : getElapsed();
+    var postDensity = pixelsPerKeyAt(postAnchors, postKey, postValue);
+    scrollState.userOffset = postDensity > 0 ? savedOffsetKey * postDensity : 0;
+  } else {
+    scrollState.userOffset = 0;
+  }
+
+  // Reset drift-detector reference to current scroll position so the next
+  // scrollTick frame doesn't interpret the post-rebuild reflow as user input.
+  scrollState.lastFrameScrollY = window.scrollY;
+
+  updateBarLabel();
+}
+
+// Coalesce multiple rapid layout-change toggles into one rebuild on the next
+// animation frame (so we read offsetTop after the browser has applied the
+// new CSS / font size).
+function scheduleScrollGeometryRebuild() {
+  if (scheduleScrollGeometryRebuild._pending) return;
+  scheduleScrollGeometryRebuild._pending = true;
+  requestAnimationFrame(function() {
+    scheduleScrollGeometryRebuild._pending = false;
+    rebuildScrollGeometry();
+  });
+}
+
 function findNextRendered(sections, fromIdx, ctn) {
   for (var j = fromIdx + 1; j < sections.length; j++) {
     var node = ctn.querySelector('[data-si="' + j + '"]');
-    if (node) return node.offsetTop - ctn.offsetTop;
+    // Skip nodes hidden via CSS (display:none in self or any ancestor →
+    // offsetParent === null). Their offsetTop is 0, which would seed a bogus
+    // anchor at the top of the page. Critical when chords/sections toggles
+    // hide .song-line.chords-only or .section-label nodes that carry data-si.
+    if (node && node.offsetParent !== null) return node.offsetTop - ctn.offsetTop;
   }
   return ctn.scrollHeight;
 }
