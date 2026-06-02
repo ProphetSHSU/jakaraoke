@@ -960,7 +960,32 @@ el.readyBadge.addEventListener('dblclick', function(e) {
 });
 
 // ---------- Transport controls ----------
-el.btnPlay.addEventListener('click', function() { var act = transportState === 'playing' ? 'stop' : 'play'; wsSend({ type: 'command', action: act }); });
+// btnPlay: dual-behavior depending on preview state.
+//   Not in preview: normal transport toggle (play <-> stop).
+//   In preview:     CUE the displayed song into Ableton (replaces selected
+//                   scene). Audio does NOT start. Hitting play again (no
+//                   longer in preview, since displayed == playing) plays.
+//                   If transport was running, we also stop it first to avoid
+//                   the brief "scrolling new song against old audio" window.
+el.btnPlay.addEventListener('click', function() {
+  var inPreview = currentSongFilename && playingSongFilename &&
+                  currentSongFilename !== playingSongFilename;
+  if (inPreview) {
+    if (transportState === 'playing') {
+      wsSend({ type: 'command', action: 'stop' });
+    }
+    var idx = findSetListIdx(currentSongFilename);
+    if (idx >= 0) {
+      wsSend({ type: 'command', action: 'goto', index: idx });
+      console.log('[cue] preview→live: goto idx=' + idx + ' (' + currentSongFilename + ')');
+    } else {
+      console.warn('[cue] could not locate ' + currentSongFilename + ' in setList');
+    }
+    return;
+  }
+  var act = transportState === 'playing' ? 'stop' : 'play';
+  wsSend({ type: 'command', action: act });
+});
 el.btnNext.addEventListener("click", function() { previewNavigateBy('next'); });
 // Goto dropdown
 el.gotoSelect = document.getElementById("gotoSelect");
@@ -1102,6 +1127,16 @@ function previewLoad(filename) {
   // Server's previewLoad handler validates against the internal setList (which
   // has .txt). Always send the canonical .txt form.
   wsSend({ type: 'previewLoad', filename: _withTxt(filename) });
+}
+// Locate a filename in serverState.setList (which carries items WITHOUT .txt).
+// Returns -1 if not found.
+function findSetListIdx(filename) {
+  if (!serverState || !serverState.setList || !filename) return -1;
+  var stripped = _noTxt(filename);
+  for (var i = 0; i < serverState.setList.length; i++) {
+    if (typeof serverState.setList[i] === 'string' && serverState.setList[i] === stripped) return i;
+  }
+  return -1;
 }
 function previewNavigateBy(direction) {
   if (!serverState || !serverState.setList) return;
