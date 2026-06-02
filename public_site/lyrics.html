@@ -1795,13 +1795,23 @@ function pixelsPerKeyAt(anchors, key, value) {
 function rebuildScrollGeometry() {
   if (!currentSongData) return;
 
-  // Snapshot live runtime state (buildAnchors zeroes most of these).
+  // Snapshot live runtime state (buildAnchors zeroes/clobbers most of these).
+  // CRITICAL: include tempo/bpb/songDuration. buildAnchors derives these from
+  // song metadata, but at runtime they are dynamic — handleTransport updates
+  // scrollState.tempo on every transport msg (carries the current tempo,
+  // including tempo_map firings like 99 Red Balloons 150→194 at bar 27).
+  // Without preserving these across rebuild, the smooth-bar extrapolation in
+  // getTargetPixelY runs at the WRONG rate between playhead msgs, producing
+  // a visible jump on every bar tick when fracBar snaps to the new playhead.
   var snap = {
     currentBar: scrollState.currentBar,
     currentBeat: scrollState.currentBeat,
     playheadReceivedAt: scrollState.playheadReceivedAt,
     playStartedAt: scrollState.playStartedAt,
-    elapsedOffset: scrollState.elapsedOffset
+    elapsedOffset: scrollState.elapsedOffset,
+    tempo: scrollState.tempo,
+    bpb: scrollState.bpb,
+    songDuration: scrollState.songDuration
   };
 
   // Convert userOffset (px) → key-units using PRE-rebuild density.
@@ -1824,6 +1834,9 @@ function rebuildScrollGeometry() {
   scrollState.playheadReceivedAt = snap.playheadReceivedAt;
   scrollState.playStartedAt = snap.playStartedAt;
   scrollState.elapsedOffset = snap.elapsedOffset;
+  scrollState.tempo = snap.tempo;
+  scrollState.bpb = snap.bpb;
+  scrollState.songDuration = snap.songDuration;
 
   // Convert key-units → px using POST-rebuild density. If mode flipped (rare:
   // bar tags fell out because they were anchored on a now-hidden node), zero
