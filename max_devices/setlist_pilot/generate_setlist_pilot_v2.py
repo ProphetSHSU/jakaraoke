@@ -16,7 +16,10 @@ AMXD_FILENAME  = "Setlist Pilot v2.amxd"
 HERE = os.path.dirname(os.path.abspath(__file__))
 PAD_W = 360
 PAD_H = 160   # jsui canvas height (also used as patching y-offset reference)
-PRES_H = 280  # full presentation height = jsui (160) + tempo_maps editing strip (120, Phase 3, retires Phase 6)
+              # Note: Live caps device chain height at ~190px. With chrome (~30px),
+              # this leaves no room to add new presentation-visible objects.
+              # tempo_maps editing surface lives in the patcher window only —
+              # open the device's Max editor (Edit button in the device header).
 
 
 def build_patcher(js_filename: str, w: int, h: int) -> dict:
@@ -141,41 +144,37 @@ def build_patcher(js_filename: str, w: int, h: int) -> dict:
 
         # Phase 3 tempo_maps editing surface (until Phase 6 UI lands).
         # Each [message] box sends its text into js inlet 0 → handler.
-        # Edit text in place (Cmd-click in unlocked patcher), then click box.
-        # Visible in presentation mode (the device chain UI) — strip below jsui.
+        # Patcher-window only (NOT presentation): Live caps device height
+        # at ~190px and the jsui already takes 160. Open the device's Max
+        # editor (Edit button in device header) to see/click these boxes.
         {"box": {
             "id": "obj-comment-tempomaps", "maxclass": "comment",
-            "text": "tempo_maps editing (edit msg text → click):",
-            "patching_rect": [240, B + 10 + DY*6 + 15, 320, 18],
-            "presentation": 1, "presentation_rect": [5, 165, 350, 16],
+            "text": "tempo_maps editing (Cmd-click msg text to edit, then click box to send):",
+            "patching_rect": [240, B + 10 + DY*6 + 15, 420, 18],
             "numinlets": 1, "numoutlets": 0, "fontsize": 11
         }},
         {"box": {
             "id": "obj-msg-tempomap-set", "maxclass": "message",
             "text": "tempo_map_set 99-red-balloons 27 194",
             "patching_rect": [240, B + 10 + DY*7 + 15, 320, 22],
-            "presentation": 1, "presentation_rect": [5, 184, 350, 22],
             "numinlets": 2, "numoutlets": 1, "outlettype": [""]
         }},
         {"box": {
             "id": "obj-msg-tempomap-clear", "maxclass": "message",
             "text": "tempo_map_clear 99-red-balloons",
             "patching_rect": [240, B + 10 + DY*8 + 15, 320, 22],
-            "presentation": 1, "presentation_rect": [5, 208, 350, 22],
             "numinlets": 2, "numoutlets": 1, "outlettype": [""]
         }},
         {"box": {
             "id": "obj-msg-tempomap-dump", "maxclass": "message",
             "text": "tempo_map_dump",
-            "patching_rect": [240, B + 10 + DY*9 + 15, 320, 22],
-            "presentation": 1, "presentation_rect": [5, 232, 170, 22],
+            "patching_rect": [240, B + 10 + DY*9 + 15, 150, 22],
             "numinlets": 2, "numoutlets": 1, "outlettype": [""]
         }},
         {"box": {
             "id": "obj-msg-tempomap-clear-all", "maxclass": "message",
             "text": "tempo_map_clear_all",
-            "patching_rect": [240, B + 10 + DY*10 + 15, 320, 22],
-            "presentation": 1, "presentation_rect": [185, 232, 170, 22],
+            "patching_rect": [400, B + 10 + DY*9 + 15, 160, 22],
             "numinlets": 2, "numoutlets": 1, "outlettype": [""]
         }},
 
