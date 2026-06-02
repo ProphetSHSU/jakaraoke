@@ -139,8 +139,9 @@ def build_editor_boxes(B, DY):
     # The corresponding patchline ([r ui_to_js] -> jsui inlet 0) is added in build_editor_lines.
 
     # ---- 4 editor rows: bar (live.numbox), bpm (live.numbox), delete (live.text button) ----
-    ROW_Y_BASE = 68    # presentation y for row 0
-    ROW_DY = 22        # vertical spacing between rows
+    # Tightened to fit under Live's ~160px usable presentation area.
+    ROW_Y_BASE = 56    # presentation y for row 0
+    ROW_DY = 20        # vertical spacing between rows
     BAR_X = EDITOR_X + 5
     BAR_W = 70
     BPM_X = EDITOR_X + 80
@@ -154,11 +155,11 @@ def build_editor_boxes(B, DY):
         bpm_prect = [PX + 170, P_Y + (i*4)*22, 60, 19]
         del_prect = [PX + 240, P_Y + (i*4)*22, 30, 19]
         boxes.append(_live_numbox("obj-bar-row-%d" % i, "bar_row_%d" % i,
-                                   bar_prect, [BAR_X, py, BAR_W, 19]))
+                                   bar_prect, [BAR_X, py, BAR_W, 17]))
         boxes.append(_live_numbox("obj-bpm-row-%d" % i, "bpm_row_%d" % i,
-                                   bpm_prect, [BPM_X, py, BPM_W, 19]))
+                                   bpm_prect, [BPM_X, py, BPM_W, 17]))
         boxes.append(_live_button("obj-del-row-%d" % i, "del_row_%d" % i,
-                                   del_prect, [DEL_X, py, DEL_W, 19], "X"))
+                                   del_prect, [DEL_X, py, DEL_W, 17], "X"))
         # Per-row prepend boxes (route the outlet value into ui_to_js)
         boxes.append(_prepend("obj-prep-bar-%d" % i,
                               [PX + 100, P_Y + (i*4 + 1)*22, 100, 22], "ui_bar %d" % i))
@@ -169,33 +170,33 @@ def build_editor_boxes(B, DY):
 
     # ---- Diagnostic labels (top of editor column) ----
     boxes.append(_comment("obj-lbl-scene",  "lbl_scene",  "Scene: (none)",
-                          [EDITOR_X, B + 10, EDITOR_W, 16],
-                          [EDITOR_X, 2, EDITOR_W, 14], fontsize=11))
+                          [EDITOR_X, B + 10, EDITOR_W, 14],
+                          [EDITOR_X, 1, EDITOR_W, 12], fontsize=10))
     boxes.append(_comment("obj-lbl-match",  "lbl_match",  "-> (no match)",
-                          [EDITOR_X, B + 30, EDITOR_W, 16],
-                          [EDITOR_X, 18, EDITOR_W, 14], fontsize=10))
+                          [EDITOR_X, B + 26, EDITOR_W, 14],
+                          [EDITOR_X, 14, EDITOR_W, 12], fontsize=10))
     boxes.append(_comment("obj-lbl-method", "lbl_method", "Match: -",
-                          [EDITOR_X, B + 50, EDITOR_W, 16],
-                          [EDITOR_X, 34, EDITOR_W, 14], fontsize=10))
+                          [EDITOR_X, B + 42, EDITOR_W, 14],
+                          [EDITOR_X, 27, EDITOR_W, 12], fontsize=10))
     # Column header (static)
     boxes.append(_comment("obj-lbl-hdr", "lbl_hdr", "Bar      BPM",
-                          [EDITOR_X, B + 70, EDITOR_W, 16],
-                          [EDITOR_X + 5, 52, 200, 14], fontsize=10))
+                          [EDITOR_X, B + 58, EDITOR_W, 14],
+                          [EDITOR_X + 5, 41, 200, 12], fontsize=10))
 
     # ---- Bottom row: add-row + pagination ----
-    BTM_Y = 158
+    BTM_Y = 138    # tightened to fit under Live's ~160px usable presentation
     boxes.append(_live_button("obj-btn-add-row", "btn_add_row",
-                              [EDITOR_X, B + 110, 100, 18],
-                              [EDITOR_X + 5, BTM_Y, 90, 18], "+ Add row"))
+                              [EDITOR_X, B + 100, 100, 17],
+                              [EDITOR_X + 5, BTM_Y, 90, 17], "+ Add row"))
     boxes.append(_live_button("obj-btn-pg-prev", "btn_pg_prev",
-                              [EDITOR_X + 110, B + 110, 30, 18],
-                              [EDITOR_X + 105, BTM_Y, 24, 18], "<"))
+                              [EDITOR_X + 110, B + 100, 30, 17],
+                              [EDITOR_X + 105, BTM_Y, 24, 17], "<"))
     boxes.append(_comment("obj-lbl-page", "lbl_page", "1/1",
-                          [EDITOR_X + 145, B + 110, 30, 16],
-                          [EDITOR_X + 132, BTM_Y + 2, 50, 14], fontsize=11))
+                          [EDITOR_X + 145, B + 100, 30, 14],
+                          [EDITOR_X + 132, BTM_Y + 2, 50, 12], fontsize=10))
     boxes.append(_live_button("obj-btn-pg-next", "btn_pg_next",
-                              [EDITOR_X + 180, B + 110, 30, 18],
-                              [EDITOR_X + 185, BTM_Y, 24, 18], ">"))
+                              [EDITOR_X + 180, B + 100, 30, 17],
+                              [EDITOR_X + 185, BTM_Y, 24, 17], ">"))
 
     # Prepend wiring for bottom row + global controls
     HX = PX + 350   # patching X for these prepends (off to the right)
@@ -207,20 +208,20 @@ def build_editor_boxes(B, DY):
 
     # ---- GLOBAL column ----
     boxes.append(_live_button("obj-btn-clear-map", "btn_clear_map",
-                              [GLOBAL_X, B + 10, 100, 18],
-                              [GLOBAL_X, 5, GLOBAL_W, 18], "Clear map"))
+                              [GLOBAL_X, B + 10, 100, 17],
+                              [GLOBAL_X, 1, GLOBAL_W, 17], "Clear map"))
     boxes.append(_live_button("obj-btn-dump", "btn_dump",
-                              [GLOBAL_X, B + 35, 100, 18],
-                              [GLOBAL_X, 26, GLOBAL_W, 18], "Dump all"))
+                              [GLOBAL_X, B + 30, 100, 17],
+                              [GLOBAL_X, 21, GLOBAL_W, 17], "Dump all"))
     boxes.append(_comment("obj-lbl-schema", "lbl_schema", "Schema: v1",
-                          [GLOBAL_X, B + 60, 100, 14],
-                          [GLOBAL_X, 52, GLOBAL_W, 14], fontsize=10))
+                          [GLOBAL_X, B + 50, 100, 12],
+                          [GLOBAL_X, 44, GLOBAL_W, 12], fontsize=10))
     boxes.append(_comment("obj-lbl-count", "lbl_count", "Maps: 0",
-                          [GLOBAL_X, B + 76, 100, 14],
-                          [GLOBAL_X, 68, GLOBAL_W, 14], fontsize=10))
+                          [GLOBAL_X, B + 64, 100, 12],
+                          [GLOBAL_X, 58, GLOBAL_W, 12], fontsize=10))
     boxes.append(_comment("obj-lbl-source", "lbl_source", "Source: none",
-                          [GLOBAL_X, B + 92, 100, 14],
-                          [GLOBAL_X, 84, GLOBAL_W, 14], fontsize=10))
+                          [GLOBAL_X, B + 78, 100, 12],
+                          [GLOBAL_X, 72, GLOBAL_W, 12], fontsize=10))
 
     # ---- Single [s ui_to_js] aggregator (all prepends feed into this send) ----
     boxes.append({"box": {
