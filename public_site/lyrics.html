@@ -62,6 +62,8 @@
     }
     .hdr-btn {
       touch-action: manipulation;
+      user-select: none;
+      -webkit-user-select: none;
       width: 32px; height: 32px;
       border-radius: 50%; border: 1.5px solid var(--text-dim);
       background: transparent; color: var(--text-mid);
@@ -987,6 +989,19 @@ el.btnPlay.addEventListener('click', function() {
   wsSend({ type: 'command', action: act });
 });
 el.btnNext.addEventListener("click", function() { previewNavigateBy('next'); });
+
+// Suppress dblclick on transport buttons so rapid taps don't trigger
+// browser-native gestures (iPad smart-tab collapse, macOS title-bar zoom,
+// word selection, etc). Single clicks still fire normally.
+['btnPlay','btnStop','btnNext','btnPrev'].forEach(function(id) {
+  var b = document.getElementById(id);
+  if (!b) return;
+  b.addEventListener('dblclick', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+  });
+});
+
 // Goto dropdown
 el.gotoSelect = document.getElementById("gotoSelect");
 el.gotoSelect.addEventListener("change", function() {
