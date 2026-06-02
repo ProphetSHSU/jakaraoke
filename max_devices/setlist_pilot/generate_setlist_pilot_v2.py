@@ -138,6 +138,40 @@ def build_patcher(js_filename: str, w: int, h: int) -> dict:
             "numinlets": 1, "numoutlets": 4, "outlettype": ["dictionary", "", "", ""]
         }},
 
+        # Phase 3 tempo_maps editing surface (until Phase 6 UI lands).
+        # Each [message] box sends its text into js inlet 0 → handler.
+        # Edit text in place (Cmd-click in unlocked patcher), then click box.
+        {"box": {
+            "id": "obj-comment-tempomaps", "maxclass": "comment",
+            "text": "tempo_maps editing (edit msg text → click):",
+            "patching_rect": [240, B + 10 + DY*6 + 15, 320, 18],
+            "numinlets": 1, "numoutlets": 0, "fontsize": 11
+        }},
+        {"box": {
+            "id": "obj-msg-tempomap-set", "maxclass": "message",
+            "text": "tempo_map_set 99-red-balloons 27 194",
+            "patching_rect": [240, B + 10 + DY*7 + 15, 320, 22],
+            "numinlets": 2, "numoutlets": 1, "outlettype": [""]
+        }},
+        {"box": {
+            "id": "obj-msg-tempomap-clear", "maxclass": "message",
+            "text": "tempo_map_clear 99-red-balloons",
+            "patching_rect": [240, B + 10 + DY*8 + 15, 320, 22],
+            "numinlets": 2, "numoutlets": 1, "outlettype": [""]
+        }},
+        {"box": {
+            "id": "obj-msg-tempomap-dump", "maxclass": "message",
+            "text": "tempo_map_dump",
+            "patching_rect": [240, B + 10 + DY*9 + 15, 320, 22],
+            "numinlets": 2, "numoutlets": 1, "outlettype": [""]
+        }},
+        {"box": {
+            "id": "obj-msg-tempomap-clear-all", "maxclass": "message",
+            "text": "tempo_map_clear_all",
+            "patching_rect": [240, B + 10 + DY*10 + 15, 320, 22],
+            "numinlets": 2, "numoutlets": 1, "outlettype": [""]
+        }},
+
     ]
 
     lines = [
@@ -151,6 +185,12 @@ def build_patcher(js_filename: str, w: int, h: int) -> dict:
         # --- live.thisdevice → t b → jsui inlet 0 (bang = init) ---
         {"patchline": {"source": ["obj-livethisdev", 1], "destination": ["obj-trigger-init", 0]}},
         {"patchline": {"source": ["obj-trigger-init", 0], "destination": ["obj-jsui", 0]}},
+
+        # --- Phase 3 tempo_maps editing message boxes → jsui inlet 0 ---
+        {"patchline": {"source": ["obj-msg-tempomap-set", 0], "destination": ["obj-jsui", 0]}},
+        {"patchline": {"source": ["obj-msg-tempomap-clear", 0], "destination": ["obj-jsui", 0]}},
+        {"patchline": {"source": ["obj-msg-tempomap-dump", 0], "destination": ["obj-jsui", 0]}},
+        {"patchline": {"source": ["obj-msg-tempomap-clear-all", 0], "destination": ["obj-jsui", 0]}},
 
         # --- UDP IN: udpreceive → route /j → jsui inlet 0 ---
         {"patchline": {"source": ["obj-udpreceive", 0], "destination": ["obj-route-j", 0]}},
