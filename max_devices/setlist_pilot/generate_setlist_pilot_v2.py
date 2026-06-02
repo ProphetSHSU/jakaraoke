@@ -123,6 +123,21 @@ def build_patcher(js_filename: str, w: int, h: int) -> dict:
             "numinlets": 2, "numoutlets": 1, "outlettype": [""]
         }},
 
+        # ================== TEMPO MAPS STORAGE ==================
+        # [dict tempo_maps @embed 1] — Max dict that embeds its contents
+        # in the saved patcher (.amxd) and therefore in the .als. JS reads
+        # and writes via `var d = new Dict('tempo_maps')`. Schema:
+        #   { "schemaVersion": 1, "tempoMaps": { "<slug>": [{"bar":N,"bpm":M},...] } }
+        # Initial state: empty dict ({}). Phase 3 message handlers in
+        # setlist_pilot_v2.js (tempo_map_set/clear/dump) populate it at
+        # runtime; saving the .als persists everything.
+        {"box": {
+            "id": "obj-dict-tempomaps", "maxclass": "newobj",
+            "text": "dict tempo_maps @embed 1",
+            "patching_rect": [240, B + 10 + DY*5 + 15, 220, 22],
+            "numinlets": 1, "numoutlets": 4, "outlettype": ["dictionary", "", "", ""]
+        }},
+
     ]
 
     lines = [

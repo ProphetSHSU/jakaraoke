@@ -139,7 +139,14 @@ var state = {
         scanCount: 0,      // total directory entries seen (incl. filtered out)
         lastError: null,   // last enum/filter error message, if any
         bySlug: {}         // Phase 2: { slug: filename } — built alongside files[]
-    }
+    },
+    // Phase 3: device-side tempo_maps storage. Loaded from [dict tempo_maps]
+    // on init. Schema: { <slug>: [{bar, bpm}, ...] } sorted by bar.
+    // Server's set_tempo_schedule is honored ONLY if no local map exists for
+    // the matched slug. In Phase 4 the server path will retire entirely.
+    tempoMaps: {},
+    tempoMapsLoaded: false,
+    tempoSource: 'none'        // 'local' | 'server' | 'none' — which map populated state.tempoSchedule
 };
 
 // File extensions we treat as ChordPro-likely (case-insensitive)
@@ -204,6 +211,83 @@ function _matchSceneToSong(sceneName) {
     return { filename: null, method: 'none', confidence: 'none' };
 }
 
+// ===========================================================================
+// Phase 3: Local tempo_maps — load from embedded dict, fire from local store
+// ===========================================================================
+// State persists in [dict tempo_maps @embed 1] (in the .amxd patcher → .als).
+// Dict format: { schemaVersion: 1, tempoMaps: { <slug>: [{bar,bpm},...] } }
+// On init, JS reads the dict into state.tempoMaps. On scene change (after
+// shadow-match), if state.tempoMaps[matchedSlug] exists, populate
+// state.tempoSchedule from it. Server's set_tempo_schedule still works as a
+// fallback for slugs without a local map (retires in Phase 4).
+
+function _loadTempoMapsFromDict() {
+    state.tempoMaps = {};
+    state.tempoMapsLoaded = false;
+    try {
+        var d = new Dict('tempo_maps');
+        var raw = d.stringify();   // returns full dict as JSON string
+        if (!raw || raw === '{}') {
+            post('  tempo_maps: dict empty — no maps loaded\n');
+            state.tempoMapsLoaded = true;
+            return;
+        }
+        var parsed = JSON.parse(raw);
+        if (!parsed || !parsed.tempoMaps) {
+            post('  tempo_maps: dict has no tempoMaps field — initializing empty\n');
+            state.tempoMapsLoaded = true;
+            return;
+        }
+        var maps = parsed.tempoMaps;
+        var slugCount = 0, totalChanges = 0;
+        for (var slug in maps) {
+            var sched = maps[slug];
+            if (sched && sched.length) {
+                // Defensive sort by bar (in case dict was edited out of order)
+                sched.sort(function(a, b) { return (a.bar | 0) - (b.bar | 0); });
+                state.tempoMaps[slug] = sched;
+                slugCount++;
+                totalChanges += sched.length;
+            }
+        }
+        state.tempoMapsLoaded = true;
+        post('  tempo_maps: loaded ' + slugCount + ' song' + (slugCount === 1 ? '' : 's') +
+             ' with ' + totalChanges + ' total change' + (totalChanges === 1 ? '' : 's') + '\n');
+    } catch (e) {
+        post('  tempo_maps: ERROR loading dict — ' + e + '\n');
+    }
+}
+
+function _saveTempoMapsToDict() {
+    try {
+        var d = new Dict('tempo_maps');
+        d.clear();
+        d.parse(JSON.stringify({ schemaVersion: 1, tempoMaps: state.tempoMaps }));
+    } catch (e) {
+        post('  tempo_maps: ERROR saving dict — ' + e + '\n');
+    }
+}
+
+// Called from broadcastSceneChange after shadow-match. If a local map exists
+// for the matched slug, populate state.tempoSchedule. Otherwise leave it alone
+// (server's set_tempo_schedule will arrive via udp-bridge if available).
+function _applyLocalTempoMap(matchedSlug) {
+    if (!matchedSlug || !state.tempoMaps[matchedSlug]) {
+        // No local map. tempoSource stays whatever the prior path set it to.
+        // (broadcastSceneChange always resets state.tempoSchedule = [] before
+        // calling us — so 'none' if no local map is correct.)
+        return;
+    }
+    var sched = state.tempoMaps[matchedSlug];
+    state.tempoSchedule = sched.slice();   // copy — non-destructive
+    state.tempoFiredIdx = 0;
+    state.tempoFiredCount = 0;
+    state.baselineTempo = null;
+    state.tempoSource = 'local';
+    post('  tempo_maps: applied local map for slug=\'' + matchedSlug + '\' (' +
+         sched.length + ' change' + (sched.length === 1 ? '' : 's') + ')\n');
+}
+
 // Tracks we broadcast mute state for (for navigator.html track toggles)
 var TRACKED_NAMES = ["Original", "BT"];
 
@@ -238,7 +322,8 @@ function broadcastSceneChange() {
         name: name,
         count: state.scenes.length
     });
-    // Phase 2: shadow-mode device-side match. Logs only — no behavior change.
+    // Phase 2: shadow-mode device-side match.
+    // Phase 3: now also applies a local tempo_map (if present for the matched slug).
     if (name && state.repo.indexed) {
         var m = _matchSceneToSong(name);
         var slug = slugify(name);
@@ -248,6 +333,10 @@ function broadcastSceneChange() {
         } else {
             post("  match[shadow]: scene='" + name + "' slug='" + slug + "' -> NO MATCH\n");
         }
+        // Phase 3: apply local tempo_map keyed by slug (scene-derived, NOT file slug).
+        // Local map wins over server's set_tempo_schedule. If no local map, server
+        // path remains active for compatibility (retires in Phase 4).
+        _applyLocalTempoMap(slug);
     }
 }
 
@@ -414,12 +503,13 @@ function setSelectedScene(idx) {
         // from v.set) sees the new value and skips its own broadcast.
         state.currentIdx = idx;
         v.set('selected_scene', 'id', sid);
-        // Clear any prior tempo schedule — server will send a new one (or none)
-        // when it processes the broadcast and resolves the new scene's song.
+        // Clear any prior tempo schedule — broadcastSceneChange will repopulate
+        // from local tempoMaps (Phase 3) or server's set_tempo_schedule if no local map.
         state.tempoSchedule = [];
         state.tempoFiredIdx = 0;
         state.tempoFiredCount = 0;
         state.baselineTempo = null;
+        state.tempoSource = 'none';
         // Explicit broadcast — observer saw currentIdx matching, skipped.
         broadcastSceneChange();
         post('  setSelected: idx=' + idx + '\n');
@@ -503,12 +593,13 @@ function sceneCallback(args) {
         var prev = state.currentIdx;
         refreshCurrentIdx();
         if (state.currentIdx !== prev) {
-            // Clear any prior tempo schedule — server will send a new one
-            // (or none) for the song matching this scene.
+            // Clear any prior tempo schedule — broadcastSceneChange will repopulate
+            // from local tempoMaps (Phase 3) or server's set_tempo_schedule if no local map.
             state.tempoSchedule = [];
             state.tempoFiredIdx = 0;
             state.tempoFiredCount = 0;
             state.baselineTempo = null;
+            state.tempoSource = 'none';
             broadcastSceneChange();
             mgraphics.redraw();
         }
@@ -705,17 +796,26 @@ function handleCommand(cmdStr) {
                 if (cmd.track) actToggleTrack(cmd.track);
                 break;
             case 'set_tempo_schedule':
+                // Phase 3: local tempo_map wins over server. If a local map was applied
+                // by _applyLocalTempoMap during the most recent scene change, ignore the
+                // server's payload entirely — they're racing for state.tempoSchedule.
+                if (state.tempoSource === 'local') {
+                    post('  tempo_schedule from server IGNORED — local map active for this scene\n');
+                    break;
+                }
                 if (cmd.schedule && cmd.schedule.length) {
                     state.tempoSchedule = cmd.schedule.slice();  // copy — non-destructive: scanned via tempoFiredIdx
                     state.tempoFiredIdx = 0;
                     state.tempoFiredCount = 0;
                     state.baselineTempo = null;
+                    state.tempoSource = 'server';
                     post('  tempo_schedule loaded [' + SCRIPT_VERSION + ']: ' + state.tempoSchedule.length + ' change(s)\n');
                 } else {
                     state.tempoSchedule = [];
                     state.tempoFiredIdx = 0;
                     state.tempoFiredCount = 0;
                     state.baselineTempo = null;
+                    state.tempoSource = 'none';
                     post('  tempo_schedule cleared\n');
                 }
                 break;
@@ -874,7 +974,8 @@ function _safeInit() {
     if (state.ready) return;
     state.ready = true;
     post('  initializing (LiveAPI ready)\n');
-    _buildRepoIndex();   // Phase 1: discover song repo, no matching yet
+    _buildRepoIndex();              // Phase 1: discover song repo
+    _loadTempoMapsFromDict();       // Phase 3: load embedded tempo_maps dict
     rebuildScenes();
     refreshCurrentIdx();
     setupObservers();
@@ -963,6 +1064,71 @@ function set_song_repo(p) {
     state.repo.path = newPath;
     post('  set_song_repo: path -> ' + newPath + ', re-indexing...\n');
     _buildRepoIndex();
+}
+
+// Phase 3: tempo_maps message handlers.
+// All operate on state.tempoMaps and persist via _saveTempoMapsToDict().
+// Save the .als after editing to durably commit changes.
+
+function tempo_map_set(slug, bar, bpm) {
+    slug = String(slug || '').trim().toLowerCase();
+    bar = bar | 0;
+    bpm = parseFloat(bpm);
+    if (!slug || bar < 0 || !(bpm > 0)) {
+        post('  tempo_map_set: usage: tempo_map_set <slug> <bar> <bpm>  (got slug=\'' +
+             slug + '\' bar=' + bar + ' bpm=' + bpm + ')\n');
+        return;
+    }
+    var sched = state.tempoMaps[slug] || [];
+    // Replace existing entry at same bar, otherwise append + sort
+    var replaced = false;
+    for (var i = 0; i < sched.length; i++) {
+        if ((sched[i].bar | 0) === bar) {
+            sched[i] = { bar: bar, bpm: bpm };
+            replaced = true;
+            break;
+        }
+    }
+    if (!replaced) {
+        sched.push({ bar: bar, bpm: bpm });
+        sched.sort(function(a, b) { return (a.bar | 0) - (b.bar | 0); });
+    }
+    state.tempoMaps[slug] = sched;
+    _saveTempoMapsToDict();
+    post('  tempo_map_set: \'' + slug + '\' bar=' + bar + ' bpm=' + bpm +
+         (replaced ? ' (replaced)' : '') + ', schedule.length=' + sched.length + '\n');
+}
+
+function tempo_map_clear(slug) {
+    slug = String(slug || '').trim().toLowerCase();
+    if (!slug) { post('  tempo_map_clear: usage: tempo_map_clear <slug>\n'); return; }
+    if (state.tempoMaps[slug]) {
+        delete state.tempoMaps[slug];
+        _saveTempoMapsToDict();
+        post('  tempo_map_clear: removed \'' + slug + '\'\n');
+    } else {
+        post('  tempo_map_clear: \'' + slug + '\' not found\n');
+    }
+}
+
+function tempo_map_clear_all() {
+    var n = 0;
+    for (var k in state.tempoMaps) n++;
+    state.tempoMaps = {};
+    _saveTempoMapsToDict();
+    post('  tempo_map_clear_all: removed ' + n + ' map' + (n === 1 ? '' : 's') + '\n');
+}
+
+function tempo_map_dump() {
+    var n = 0;
+    for (var k in state.tempoMaps) n++;
+    post('  tempo_map_dump: ' + n + ' song map' + (n === 1 ? '' : 's') + ':\n');
+    for (var slug in state.tempoMaps) {
+        var sched = state.tempoMaps[slug];
+        var parts = [];
+        for (var i = 0; i < sched.length; i++) parts.push(sched[i].bar + ':' + sched[i].bpm);
+        post('    \'' + slug + '\' -> [' + parts.join(', ') + ']\n');
+    }
 }
 
 // Phase 1: dump current repo state for diagnostics.
