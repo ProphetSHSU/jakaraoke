@@ -26,7 +26,7 @@ mgraphics.init();
 // SCRIPT_VERSION is stamped into every consequential log line so we can always
 // confirm at a glance which build is running. Bump it whenever this file changes
 // in a way that affects runtime behavior.
-var SCRIPT_VERSION = "v2.3.0-external-tempo-maps-2026-06-03";
+var SCRIPT_VERSION = "v2.3.1-path-probe-2026-06-03";
 post('=== SP2 script loaded: ' + (new Date()).toISOString() + ' [' + SCRIPT_VERSION + '] ===\n');
 mgraphics.relative_coords = 0;
 mgraphics.autofill = 0;
@@ -246,24 +246,46 @@ function _matchSceneToSong(sceneName) {
 var TEMPO_MAPS_FILE = null;   // computed once on first load, cached
 
 function _computeTempoMapsPath() {
-    // Derive absolute path from this device's .amxd location.
-    // this.patcher.filepath is the saved .amxd file (always set when the
-    // device is loaded from the User Library).
+    // Derive absolute path from this device's location. In M4L, this.patcher.filepath
+    // can return either the .amxd file or, surprisingly, the containing folder
+    // (depending on how Live wraps the device). We probe and adapt.
+    var diag = [];
+    var raw = null;
     try {
-        var fp = this.patcher.filepath;
-        if (fp) {
-            var slash = fp.lastIndexOf('/');
-            if (slash > 0) {
-                TEMPO_MAPS_FILE = fp.substring(0, slash) + '/setlist_pilot_tempo_maps.json';
-                return true;
-            }
-        }
-        post('  tempo_maps: WARN — patcher.filepath empty (unsaved device?); file persistence DISABLED\n');
-    } catch (e) {
-        post('  tempo_maps: ERR _computeTempoMapsPath — ' + e + '\n');
+        raw = this.patcher.filepath || null;
+        diag.push('this.patcher.filepath=\'' + (raw || '<empty>') + '\'');
+    } catch (e) { diag.push('this.patcher.filepath ERR: ' + e); }
+    try {
+        var pp = this.patcher.parentpatcher;
+        var ppfp = pp ? (pp.filepath || '<empty>') : '<no parent>';
+        diag.push('parentpatcher.filepath=\'' + ppfp + '\'');
+    } catch (e) { diag.push('parentpatcher.filepath ERR: ' + e); }
+    post('  tempo_maps: path probe — ' + diag.join(' | ') + '\n');
+
+    if (!raw) {
+        post('  tempo_maps: WARN — no patcher.filepath; file persistence DISABLED\n');
+        TEMPO_MAPS_FILE = null;
+        return false;
     }
-    TEMPO_MAPS_FILE = null;
-    return false;
+
+    // Heuristic: if the path ends in a recognized extension, treat as file (strip filename).
+    // Otherwise treat as folder (use directly).
+    var lower = raw.toLowerCase();
+    var isFile = (lower.indexOf('.amxd') === lower.length - 5)
+              || (lower.indexOf('.maxpat') === lower.length - 7)
+              || (lower.indexOf('.maxhelp') === lower.length - 8);
+    var dir;
+    if (isFile) {
+        var slash = raw.lastIndexOf('/');
+        dir = (slash > 0) ? raw.substring(0, slash) : raw;
+    } else {
+        // Likely already a folder path (M4L wrapper case observed on gigmac).
+        // Strip trailing slash if any.
+        dir = raw.replace(/\/+$/, '');
+    }
+    TEMPO_MAPS_FILE = dir + '/setlist_pilot_tempo_maps.json';
+    post('  tempo_maps: resolved file path = ' + TEMPO_MAPS_FILE + '\n');
+    return true;
 }
 
 function _loadTempoMaps() {
@@ -273,62 +295,90 @@ function _loadTempoMaps() {
     _computeTempoMapsPath();
     var d = new Dict('tempo_maps');
 
-    // Step 1: try to load from external file. If successful, this overwrites
-    // any embedded data the dict picked up from the .amxd / .als.
-    var fileLoaded = false;
-    if (TEMPO_MAPS_FILE) {
-        try {
-            d.import_json(TEMPO_MAPS_FILE);
-            fileLoaded = true;
-        } catch (e) {
-            // File missing on first run — expected. The embedded dict's
-            // contents (if any) will be migrated below.
-        }
-    }
-
-    // Step 2: parse current dict contents (whichever source) into state.tempoMaps.
-    var slugCount = 0, totalChanges = 0;
+    // Step 0: snapshot embedded contents from the .amxd-loaded dict BEFORE
+    // any import_json call (which may clobber the dict contents on a missing-file
+    // failure). This snapshot is our migration source if no external file exists.
+    var embeddedSnapshot = null;
     try {
-        var raw = d.stringify();
-        if (raw && raw !== '{}') {
-            var parsed = JSON.parse(raw);
-            if (parsed && parsed.tempoMaps) {
-                for (var slug in parsed.tempoMaps) {
-                    var sched = parsed.tempoMaps[slug];
-                    if (sched && sched.length) {
-                        sched.sort(function(a, b) { return (a.bar | 0) - (b.bar | 0); });
-                        state.tempoMaps[slug] = sched;
-                        slugCount++;
-                        totalChanges += sched.length;
+        var rawBefore = d.stringify();
+        if (rawBefore && rawBefore !== '{}') {
+            var parsedBefore = JSON.parse(rawBefore);
+            if (parsedBefore && parsedBefore.tempoMaps) {
+                // Only consider it real data if at least one slug has entries
+                for (var pk in parsedBefore.tempoMaps) {
+                    if (parsedBefore.tempoMaps[pk] && parsedBefore.tempoMaps[pk].length) {
+                        embeddedSnapshot = parsedBefore.tempoMaps;
+                        break;
                     }
                 }
             }
         }
-    } catch (e) {
-        post('  tempo_maps: parse ERR — ' + e + '\n');
+    } catch (e) { post('  tempo_maps: snapshot ERR — ' + e + '\n'); }
+
+    // Step 1: try to load from external file. import_json does NOT throw on
+    // missing file (just logs `dictwrap: file not found`), so verify success
+    // by re-checking the dict contents afterward.
+    var fileMaps = null;
+    if (TEMPO_MAPS_FILE) {
+        try {
+            d.import_json(TEMPO_MAPS_FILE);
+            var rawAfter = d.stringify();
+            if (rawAfter && rawAfter !== '{}') {
+                var parsedAfter = JSON.parse(rawAfter);
+                if (parsedAfter && parsedAfter.tempoMaps) {
+                    fileMaps = parsedAfter.tempoMaps;
+                }
+            }
+        } catch (e) {
+            post('  tempo_maps: import_json ERR — ' + e + '\n');
+        }
     }
 
-    // Step 3: report what happened, and migrate if needed.
-    if (fileLoaded) {
+    // Step 2: pick the data source. File wins; embedded is migration fallback.
+    var source = null;   // 'file' | 'migrate' | 'fresh'
+    var maps = null;
+    if (fileMaps) {
+        source = 'file';
+        maps = fileMaps;
+    } else if (embeddedSnapshot) {
+        source = 'migrate';
+        maps = embeddedSnapshot;
+    } else {
+        source = 'fresh';
+        maps = {};
+    }
+
+    // Step 3: hydrate state.tempoMaps from chosen source.
+    var slugCount = 0, totalChanges = 0;
+    for (var slug in maps) {
+        var sched = maps[slug];
+        if (sched && sched.length) {
+            sched.sort(function(a, b) { return (a.bar | 0) - (b.bar | 0); });
+            state.tempoMaps[slug] = sched;
+            slugCount++;
+            totalChanges += sched.length;
+        }
+    }
+
+    // Step 4: report + cement migration if needed.
+    if (source === 'file') {
         post('  tempo_maps [' + SCRIPT_VERSION + ']: loaded ' + slugCount +
              ' song(s), ' + totalChanges + ' change(s) from ' + TEMPO_MAPS_FILE + '\n');
-    } else if (slugCount > 0 && TEMPO_MAPS_FILE) {
-        // Embedded data found but no file — first run on the new build.
-        // Save to file now to cement the migration.
+    } else if (source === 'migrate') {
         post('  tempo_maps [' + SCRIPT_VERSION + ']: MIGRATING ' + slugCount +
              ' song(s), ' + totalChanges + ' change(s) from embedded dict to ' +
              TEMPO_MAPS_FILE + '\n');
-        _saveTempoMaps();
+        _saveTempoMaps();   // cement to file
     } else if (TEMPO_MAPS_FILE) {
         post('  tempo_maps [' + SCRIPT_VERSION + ']: starting fresh (no file, no embedded data) at ' +
              TEMPO_MAPS_FILE + '\n');
-        // Don't pre-create the file — _saveTempoMaps will be called on first edit.
     } else {
         post('  tempo_maps [' + SCRIPT_VERSION + ']: starting fresh (file persistence DISABLED — no patcher path)\n');
     }
     state.tempoMapsLoaded = true;
 }
 
+function _saveTempoMaps() {
 function _saveTempoMaps() {
     // Truth: external file. Mirror: embedded dict (kept for one rev for
     // backward-compat — if the device ever loads on an older build that
