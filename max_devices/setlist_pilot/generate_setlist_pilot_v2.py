@@ -384,13 +384,19 @@ def build_patcher(js_filename: str, w: int, h: int) -> dict:
         }},
 
         # ================== TEMPO MAPS STORAGE ==================
-        # [dict tempo_maps @embed 1] — Max dict that embeds its contents
-        # in the saved patcher (.amxd) and therefore in the .als. JS reads
-        # and writes via `var d = new Dict('tempo_maps')`. Schema:
-        #   { "schemaVersion": 1, "tempoMaps": { "<slug>": [{"bar":N,"bpm":M},...] } }
-        # Initial state: empty dict ({}). Phase 3 message handlers in
-        # setlist_pilot_v2.js (tempo_map_set/clear/dump) populate it at
-        # runtime; saving the .als persists everything.
+        # [dict tempo_maps @embed 1] — Max dict that mirrors the canonical
+        # tempo-map data which now LIVES IN AN EXTERNAL JSON FILE colocated
+        # with this .amxd:
+        #   <amxd_dir>/setlist_pilot_tempo_maps.json
+        #
+        # The external file is the source of truth (since v2.3.0). The
+        # embedded dict is kept (and `@embed 1` retained) for ONE rev so
+        # devices saved into a .als under v2.2.x still get their data
+        # migrated to the file on first load under v2.3.0+. After everyone
+        # is on v2.3.0+, this can be flipped to `@embed 0`.
+        #
+        # Schema (unchanged): { "schemaVersion": 1, "tempoMaps": { "<slug>": [{"bar":N,"bpm":M},...] } }
+        # See setlist_pilot_v2.js: _loadTempoMaps() / _saveTempoMaps().
         {"box": {
             "id": "obj-dict-tempomaps", "maxclass": "newobj",
             "text": "dict tempo_maps @embed 1",

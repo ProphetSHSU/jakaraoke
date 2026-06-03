@@ -26,7 +26,7 @@ mgraphics.init();
 // SCRIPT_VERSION is stamped into every consequential log line so we can always
 // confirm at a glance which build is running. Bump it whenever this file changes
 // in a way that affects runtime behavior.
-var SCRIPT_VERSION = "v2.2.2-reset-song-time-2026-06-01";
+var SCRIPT_VERSION = "v2.3.0-external-tempo-maps-2026-06-03";
 post('=== SP2 script loaded: ' + (new Date()).toISOString() + ' [' + SCRIPT_VERSION + '] ===\n');
 mgraphics.relative_coords = 0;
 mgraphics.autofill = 0;
@@ -222,59 +222,134 @@ function _matchSceneToSong(sceneName) {
 // ===========================================================================
 // Phase 3: Local tempo_maps — load from embedded dict, fire from local store
 // ===========================================================================
-// State persists in [dict tempo_maps @embed 1] (in the .amxd patcher → .als).
-// Dict format: { schemaVersion: 1, tempoMaps: { <slug>: [{bar,bpm},...] } }
-// On init, JS reads the dict into state.tempoMaps. On scene change (after
-// shadow-match), if state.tempoMaps[matchedSlug] exists, populate
-// state.tempoSchedule from it. Server's set_tempo_schedule still works as a
-// fallback for slugs without a local map (retires in Phase 4).
+// ---------------------------------------------------------------------------
+// EXTERNAL TEMPO-MAP STORAGE [v2.3.0+]
+// ---------------------------------------------------------------------------
+// Tempo maps live in an EXTERNAL JSON file colocated with the device .amxd:
+//
+//   /Users/<user>/Music/Ableton/User Library/Presets/MIDI Effects/
+//     Max MIDI Effect/setlist_pilot_tempo_maps.json
+//
+// This decouples user data from the device binary. Updating the .amxd
+// (e.g., scp during dev) leaves the user's hundreds of customized tempo
+// maps untouched. The embedded [dict tempo_maps @embed 1] is a working
+// mirror only — kept around for ONE rev to allow migration of any data
+// that was already saved into the .als prior to this change.
+//
+// Filename is intentionally NOT version-namespaced: `setlist_pilot_tempo_maps.json`.
+// A future v3 device can read the same file (and bump schemaVersion in the
+// JSON if it needs to evolve schema). This makes v2→v3 ingestion automatic.
+//
+// File schema (unchanged from embedded dict):
+//   { "schemaVersion": 1, "tempoMaps": { "<slug>": [{"bar":N,"bpm":M},...] } }
 
-function _loadTempoMapsFromDict() {
-    state.tempoMaps = {};
-    state.tempoMapsLoaded = false;
+var TEMPO_MAPS_FILE = null;   // computed once on first load, cached
+
+function _computeTempoMapsPath() {
+    // Derive absolute path from this device's .amxd location.
+    // this.patcher.filepath is the saved .amxd file (always set when the
+    // device is loaded from the User Library).
     try {
-        var d = new Dict('tempo_maps');
-        var raw = d.stringify();   // returns full dict as JSON string
-        if (!raw || raw === '{}') {
-            post('  tempo_maps: dict empty — no maps loaded\n');
-            state.tempoMapsLoaded = true;
-            return;
-        }
-        var parsed = JSON.parse(raw);
-        if (!parsed || !parsed.tempoMaps) {
-            post('  tempo_maps: dict has no tempoMaps field — initializing empty\n');
-            state.tempoMapsLoaded = true;
-            return;
-        }
-        var maps = parsed.tempoMaps;
-        var slugCount = 0, totalChanges = 0;
-        for (var slug in maps) {
-            var sched = maps[slug];
-            if (sched && sched.length) {
-                // Defensive sort by bar (in case dict was edited out of order)
-                sched.sort(function(a, b) { return (a.bar | 0) - (b.bar | 0); });
-                state.tempoMaps[slug] = sched;
-                slugCount++;
-                totalChanges += sched.length;
+        var fp = this.patcher.filepath;
+        if (fp) {
+            var slash = fp.lastIndexOf('/');
+            if (slash > 0) {
+                TEMPO_MAPS_FILE = fp.substring(0, slash) + '/setlist_pilot_tempo_maps.json';
+                return true;
             }
         }
-        state.tempoMapsLoaded = true;
-        post('  tempo_maps: loaded ' + slugCount + ' song' + (slugCount === 1 ? '' : 's') +
-             ' with ' + totalChanges + ' total change' + (totalChanges === 1 ? '' : 's') + '\n');
+        post('  tempo_maps: WARN — patcher.filepath empty (unsaved device?); file persistence DISABLED\n');
     } catch (e) {
-        post('  tempo_maps: ERROR loading dict — ' + e + '\n');
+        post('  tempo_maps: ERR _computeTempoMapsPath — ' + e + '\n');
     }
+    TEMPO_MAPS_FILE = null;
+    return false;
 }
 
-function _saveTempoMapsToDict() {
+function _loadTempoMaps() {
+    state.tempoMaps = {};
+    state.tempoMapsLoaded = false;
+
+    _computeTempoMapsPath();
+    var d = new Dict('tempo_maps');
+
+    // Step 1: try to load from external file. If successful, this overwrites
+    // any embedded data the dict picked up from the .amxd / .als.
+    var fileLoaded = false;
+    if (TEMPO_MAPS_FILE) {
+        try {
+            d.import_json(TEMPO_MAPS_FILE);
+            fileLoaded = true;
+        } catch (e) {
+            // File missing on first run — expected. The embedded dict's
+            // contents (if any) will be migrated below.
+        }
+    }
+
+    // Step 2: parse current dict contents (whichever source) into state.tempoMaps.
+    var slugCount = 0, totalChanges = 0;
+    try {
+        var raw = d.stringify();
+        if (raw && raw !== '{}') {
+            var parsed = JSON.parse(raw);
+            if (parsed && parsed.tempoMaps) {
+                for (var slug in parsed.tempoMaps) {
+                    var sched = parsed.tempoMaps[slug];
+                    if (sched && sched.length) {
+                        sched.sort(function(a, b) { return (a.bar | 0) - (b.bar | 0); });
+                        state.tempoMaps[slug] = sched;
+                        slugCount++;
+                        totalChanges += sched.length;
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        post('  tempo_maps: parse ERR — ' + e + '\n');
+    }
+
+    // Step 3: report what happened, and migrate if needed.
+    if (fileLoaded) {
+        post('  tempo_maps [' + SCRIPT_VERSION + ']: loaded ' + slugCount +
+             ' song(s), ' + totalChanges + ' change(s) from ' + TEMPO_MAPS_FILE + '\n');
+    } else if (slugCount > 0 && TEMPO_MAPS_FILE) {
+        // Embedded data found but no file — first run on the new build.
+        // Save to file now to cement the migration.
+        post('  tempo_maps [' + SCRIPT_VERSION + ']: MIGRATING ' + slugCount +
+             ' song(s), ' + totalChanges + ' change(s) from embedded dict to ' +
+             TEMPO_MAPS_FILE + '\n');
+        _saveTempoMaps();
+    } else if (TEMPO_MAPS_FILE) {
+        post('  tempo_maps [' + SCRIPT_VERSION + ']: starting fresh (no file, no embedded data) at ' +
+             TEMPO_MAPS_FILE + '\n');
+        // Don't pre-create the file — _saveTempoMaps will be called on first edit.
+    } else {
+        post('  tempo_maps [' + SCRIPT_VERSION + ']: starting fresh (file persistence DISABLED — no patcher path)\n');
+    }
+    state.tempoMapsLoaded = true;
+}
+
+function _saveTempoMaps() {
+    // Truth: external file. Mirror: embedded dict (kept for one rev for
+    // backward-compat — if the device ever loads on an older build that
+    // reads from the embedded dict only, it'll still see current data
+    // saved into the .als).
     try {
         var d = new Dict('tempo_maps');
         d.clear();
         d.parse(JSON.stringify({ schemaVersion: 1, tempoMaps: state.tempoMaps }));
+        if (!TEMPO_MAPS_FILE) _computeTempoMapsPath();
+        if (TEMPO_MAPS_FILE) {
+            d.export_json(TEMPO_MAPS_FILE);
+        }
     } catch (e) {
-        post('  tempo_maps: ERROR saving dict — ' + e + '\n');
+        post('  tempo_maps: ERR _saveTempoMaps — ' + e + '\n');
     }
 }
+
+// Backward-compat aliases (in case any caller still references the old names).
+var _loadTempoMapsFromDict = _loadTempoMaps;
+var _saveTempoMapsToDict = _saveTempoMaps;
 
 // Called from broadcastSceneChange after shadow-match. If a local map exists
 // for the matched slug, populate state.tempoSchedule. Otherwise leave it alone
@@ -994,7 +1069,7 @@ function _safeInit() {
     state.ready = true;
     post('  initializing (LiveAPI ready)\n');
     _buildRepoIndex();              // Phase 1: discover song repo
-    _loadTempoMapsFromDict();       // Phase 3: load embedded tempo_maps dict
+    _loadTempoMaps();              // Phase 3+: load tempo_maps from external file (with embedded-dict migration)
     rebuildScenes();
     refreshCurrentIdx();
     setupObservers();
@@ -1092,7 +1167,7 @@ function set_song_repo(p) {
 }
 
 // Phase 3: tempo_maps message handlers.
-// All operate on state.tempoMaps and persist via _saveTempoMapsToDict().
+// All operate on state.tempoMaps and persist via _saveTempoMaps() (writes to external JSON file).
 // Save the .als after editing to durably commit changes.
 
 function tempo_map_set(slug, bar, bpm) {
@@ -1119,7 +1194,7 @@ function tempo_map_set(slug, bar, bpm) {
         sched.sort(function(a, b) { return (a.bar | 0) - (b.bar | 0); });
     }
     state.tempoMaps[slug] = sched;
-    _saveTempoMapsToDict();
+    _saveTempoMaps();
     post('  tempo_map_set: \'' + slug + '\' bar=' + bar + ' bpm=' + bpm +
          (replaced ? ' (replaced)' : '') + ', schedule.length=' + sched.length + '\n');
 }
@@ -1129,7 +1204,7 @@ function tempo_map_clear(slug) {
     if (!slug) { post('  tempo_map_clear: usage: tempo_map_clear <slug>\n'); return; }
     if (state.tempoMaps[slug]) {
         delete state.tempoMaps[slug];
-        _saveTempoMapsToDict();
+        _saveTempoMaps();
         post('  tempo_map_clear: removed \'' + slug + '\'\n');
     } else {
         post('  tempo_map_clear: \'' + slug + '\' not found\n');
@@ -1140,7 +1215,7 @@ function tempo_map_clear_all() {
     var n = 0;
     for (var k in state.tempoMaps) n++;
     state.tempoMaps = {};
-    _saveTempoMapsToDict();
+    _saveTempoMaps();
     post('  tempo_map_clear_all: removed ' + n + ' map' + (n === 1 ? '' : 's') + '\n');
 }
 
@@ -1260,7 +1335,7 @@ function ui_bar(rowIdx, value) {
     while (entries.length <= entryIdx) entries.push({bar: 0, bpm: 0});
     entries[entryIdx].bar = parseInt(value) | 0;
     state.tempoMaps[slug] = entries;
-    _saveTempoMapsToDict();
+    _saveTempoMaps();
     _maybeReapplyForActiveSlug(slug);
     _refreshEditorUI();
 }
@@ -1273,7 +1348,7 @@ function ui_bpm(rowIdx, value) {
     while (entries.length <= entryIdx) entries.push({bar: 0, bpm: 0});
     entries[entryIdx].bpm = Number(value);
     state.tempoMaps[slug] = entries;
-    _saveTempoMapsToDict();
+    _saveTempoMaps();
     _maybeReapplyForActiveSlug(slug);
     _refreshEditorUI();
 }
@@ -1293,7 +1368,7 @@ function ui_del_row(rowIdx) {
     } else {
         state.tempoMaps[slug] = entries;
     }
-    _saveTempoMapsToDict();
+    _saveTempoMaps();
     _maybeReapplyForActiveSlug(slug);
     _refreshEditorUI();
     post('  ui_del_row: removed entry ' + entryIdx + ' for slug=\'' + slug + '\'\n');
@@ -1307,7 +1382,7 @@ function ui_add_row() {
     var entries = state.tempoMaps[slug] || [];
     entries.push({bar: 0, bpm: 0});
     state.tempoMaps[slug] = entries;
-    _saveTempoMapsToDict();
+    _saveTempoMaps();
     // Jump to page containing the new entry
     state.editorPage = Math.floor((entries.length - 1) / EDITOR_ROWS_PER_PAGE);
     _refreshEditorUI();
@@ -1338,7 +1413,7 @@ function ui_clear_map() {
     if (!slug) { post('  ui_clear_map: no editorSlug — nothing to clear\n'); return; }
     if (state.tempoMaps[slug]) {
         delete state.tempoMaps[slug];
-        _saveTempoMapsToDict();
+        _saveTempoMaps();
         _maybeReapplyForActiveSlug(slug);  // will leave tempoSource='none' since map gone
         // Note: maybeReapply would set source='local' — but since map is gone, fix up:
         state.tempoSchedule = [];
