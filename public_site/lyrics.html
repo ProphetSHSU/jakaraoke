@@ -1222,6 +1222,20 @@ function handleSong(msg) {
   currentSongMeta = song.metadata || {};
   currentSongData = song;  // cache full parsed song for in-flight anchor rebuilds (chord/section toggles)
 
+  // Seed scroll-engine song-level state SYNCHRONOUSLY so it's in place before
+  // handleTransport (which often arrives between handleSong and the rAF that
+  // runs buildAnchors) sets the authoritative live tempo. If we initialized
+  // these inside the rAF callback (as buildAnchors used to), the rAF would
+  // clobber whatever handleTransport had set in the meantime.
+  //
+  // Bug this prevents: 99 Red Balloons declares {tempo:194} in metadata but
+  // its intro plays at 150 (via tempo_map at bar 27). Late-joiner during the
+  // intro: handleTransport correctly set tempo=150, then rAF→buildAnchors
+  // overwrote with 194. Smooth-bar extrapolation ran at the wrong rate, every
+  // playhead msg snapped fracBar back to truth → visible per-downbeat jump.
+  scrollState.songDuration = currentSongMeta.durationSeconds || 0;
+  scrollState.tempo = currentSongMeta.tempo || 120;
+
   var newFilename  = msg.filename || currentSongFilename;
   var isPreviewMsg = (msg.preview === true);
 
@@ -1692,11 +1706,12 @@ function buildAnchors(song) {
   var sections = song.sections || [];
   var meta = song.metadata || {};
   var duration = meta.durationSeconds || 0;
-  var tempo = meta.tempo || 120;
   var bpb = 4;
 
-  scrollState.songDuration = duration;
-  scrollState.tempo = tempo;
+  // NOTE: scrollState.tempo and scrollState.songDuration are seeded by
+  // handleSong synchronously — do NOT re-write them here. Doing so would
+  // clobber the live tempo that handleTransport may have set between
+  // handleSong's sync pass and this rAF callback. (See handleSong comment.)
   scrollState.bpb = bpb;
   scrollState.userOffset = 0;
   scrollState.lastFrameScrollY = 0;
@@ -1797,23 +1812,17 @@ function pixelsPerKeyAt(anchors, key, value) {
 function rebuildScrollGeometry() {
   if (!currentSongData) return;
 
-  // Snapshot live runtime state (buildAnchors zeroes/clobbers most of these).
-  // CRITICAL: include tempo/bpb/songDuration. buildAnchors derives these from
-  // song metadata, but at runtime they are dynamic — handleTransport updates
-  // scrollState.tempo on every transport msg (carries the current tempo,
-  // including tempo_map firings like 99 Red Balloons 150→194 at bar 27).
-  // Without preserving these across rebuild, the smooth-bar extrapolation in
-  // getTargetPixelY runs at the WRONG rate between playhead msgs, producing
-  // a visible jump on every bar tick when fracBar snaps to the new playhead.
+  // Snapshot live runtime state (buildAnchors zeroes most of these).
+  // tempo/songDuration are no longer touched by buildAnchors (handleSong
+  // owns them synchronously), so they don't need to be in the snapshot.
+  // bpb is re-derived by buildAnchors from sections — same value as the
+  // pre-rebuild snapshot would have, so omitted for cleanliness.
   var snap = {
     currentBar: scrollState.currentBar,
     currentBeat: scrollState.currentBeat,
     playheadReceivedAt: scrollState.playheadReceivedAt,
     playStartedAt: scrollState.playStartedAt,
-    elapsedOffset: scrollState.elapsedOffset,
-    tempo: scrollState.tempo,
-    bpb: scrollState.bpb,
-    songDuration: scrollState.songDuration
+    elapsedOffset: scrollState.elapsedOffset
   };
 
   // Convert userOffset (px) → key-units using PRE-rebuild density.
@@ -1836,9 +1845,6 @@ function rebuildScrollGeometry() {
   scrollState.playheadReceivedAt = snap.playheadReceivedAt;
   scrollState.playStartedAt = snap.playStartedAt;
   scrollState.elapsedOffset = snap.elapsedOffset;
-  scrollState.tempo = snap.tempo;
-  scrollState.bpb = snap.bpb;
-  scrollState.songDuration = snap.songDuration;
 
   // Convert key-units → px using POST-rebuild density. If mode flipped (rare:
   // bar tags fell out because they were anchored on a now-hidden node), zero
