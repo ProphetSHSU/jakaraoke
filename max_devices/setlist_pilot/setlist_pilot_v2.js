@@ -26,7 +26,7 @@ mgraphics.init();
 // SCRIPT_VERSION is stamped into every consequential log line so we can always
 // confirm at a glance which build is running. Bump it whenever this file changes
 // in a way that affects runtime behavior.
-var SCRIPT_VERSION = "v2.3.3-persist-test-2026-06-03";
+var SCRIPT_VERSION = "v2.4.0-reveal-in-finder-2026-06-03";
 post('=== SP2 script loaded: ' + (new Date()).toISOString() + ' [' + SCRIPT_VERSION + '] ===\n');
 mgraphics.relative_coords = 0;
 mgraphics.autofill = 0;
@@ -1478,8 +1478,25 @@ function ui_clear_map() {
     _refreshEditorUI();
 }
 
-function ui_dump() {
-    tempo_map_dump();
+function ui_reveal_file() {
+    // Open the device folder in Finder so the user can see / edit / back up
+    // the tempo_maps JSON alongside the .amxd and .js files. macOS handles
+    // file:// URLs via NSWorkspace; spaces must be percent-encoded.
+    if (!TEMPO_MAPS_FILE) _computeTempoMapsPath();
+    if (!TEMPO_MAPS_FILE) {
+        post('  ui_reveal_file: no path resolved — cannot reveal\n');
+        return;
+    }
+    var slash = TEMPO_MAPS_FILE.lastIndexOf('/');
+    var dir = (slash > 0) ? TEMPO_MAPS_FILE.substring(0, slash) : TEMPO_MAPS_FILE;
+    // Trailing slash hints to NSWorkspace that this is a directory (open in Finder)
+    var url = 'file://' + dir.replace(/ /g, '%20') + '/';
+    try {
+        messnamed('max', 'launchbrowser', url);
+        post('  ui_reveal_file: opened ' + url + '\n');
+    } catch (e) {
+        post('  ui_reveal_file: ERR — ' + e + '\n');
+    }
 }
 
 // Phase 1: dump current repo state for diagnostics.

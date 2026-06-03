@@ -33,7 +33,7 @@ PAD_H = 160   # jsui canvas height (also used as patching y-offset reference)
 # Wiring pattern: each control's outlet feeds a [prepend ui_<msg> [args...]]
 # whose output goes to [s ui_to_js]. Receiver [r ui_to_js] connects to jsui
 # inlet 0. JS handlers (ui_bar, ui_bpm, ui_del_row, ui_add_row, ui_pg_prev,
-# ui_pg_next, ui_clear_map, ui_dump) update state.tempoMaps and refresh UI.
+# ui_pg_next, ui_clear_map, ui_reveal_file) update state.tempoMaps and refresh UI.
 # JS pushes values back to controls via this.patcher.getnamed(varname).message('set', ...)
 
 EDITOR_X = 370    # left edge of editor column
@@ -219,15 +219,15 @@ def build_editor_boxes(B, DY):
     boxes.append(_prepend("obj-prep-pg-prev", [HX, P_Y + 25, 120, 22], "ui_pg_prev"))
     boxes.append(_prepend("obj-prep-pg-next", [HX, P_Y + 50, 120, 22], "ui_pg_next"))
     boxes.append(_prepend("obj-prep-clear",   [HX, P_Y + 75, 120, 22], "ui_clear_map"))
-    boxes.append(_prepend("obj-prep-dump",    [HX, P_Y + 100,120, 22], "ui_dump"))
+    boxes.append(_prepend("obj-prep-reveal", [HX, P_Y + 100,120, 22], "ui_reveal_file"))
 
     # ---- GLOBAL column ----
     boxes.append(_live_button("obj-btn-clear-map", "btn_clear_map",
                               [GLOBAL_X, B + 10, 100, 17],
                               [GLOBAL_X, 1, GLOBAL_W, 17], "Clear map"))
-    boxes.append(_live_button("obj-btn-dump", "btn_dump",
+    boxes.append(_live_button("obj-btn-reveal", "btn_reveal_file",
                               [GLOBAL_X, B + 30, 100, 17],
-                              [GLOBAL_X, 21, GLOBAL_W, 17], "Dump all"))
+                              [GLOBAL_X, 21, GLOBAL_W, 17], "Reveal file"))
     boxes.append(_comment("obj-lbl-schema", "lbl_schema", "Schema: v1",
                           [GLOBAL_X, B + 50, 100, 12],
                           [GLOBAL_X, 44, GLOBAL_W, 12], fontsize=10))
@@ -270,7 +270,7 @@ def build_editor_lines():
         ("obj-btn-pg-prev",  "obj-prep-pg-prev"),
         ("obj-btn-pg-next",  "obj-prep-pg-next"),
         ("obj-btn-clear-map","obj-prep-clear"),
-        ("obj-btn-dump",     "obj-prep-dump"),
+        ("obj-btn-reveal",   "obj-prep-reveal"),
     ]
     for src, prep in pairs:
         lines.append({"patchline": {"source": [src, 0], "destination": [prep, 0]}})
