@@ -806,6 +806,7 @@ var serverState = null;
 var transportState = 'stopped';
 var currentSongMeta = null;
 var currentSongData = null;     // full parsed song — kept so layout-change toggles can rebuild anchors
+var songGeneration = 0;         // incremented each handleSong — stale rAF closures bail on mismatch
 var playingSongFilename = null;  // filename of song that's currently playing (decoupled from displayed)
 var playingSongTitle    = null;  // cached title for preview banner
 var fontScale = parseFloat(localStorage.getItem('lyrics_font_scale') || '1.0');
@@ -1127,6 +1128,10 @@ function connectWebSocket() {
         return;
       }
             if (msg.type === 'readyState') { renderReadyState(msg.players || []); return; }
+      if (msg.type === 'previewLoad_result' && !msg.ok) {
+        console.warn('[preview] load failed:', msg.error);
+        return;
+      }
     } catch(err) { console.error('WS:', err); }
   };
 }
@@ -1219,6 +1224,8 @@ function previewGoto(index) {
 //                                            and does NOT alter playingSongFilename.
 function handleSong(msg) {
   var song = msg.song;
+  songGeneration++;
+  var myGeneration = songGeneration;
   currentSongMeta = song.metadata || {};
   currentSongData = song;  // cache full parsed song for in-flight anchor rebuilds (chord/section toggles)
 
@@ -1250,7 +1257,7 @@ function handleSong(msg) {
   //                   back); preserve playhead, exit banner.
   //   liveAdvance  — live msg from Ableton scene change; ALWAYS exit any preview
   //                   state and update playingSongFilename to the new live song.
-  var enterPreview = isPreviewMsg && playingSongFilename && (newFilename !== playingSongFilename);
+  var enterPreview = isPreviewMsg && (!playingSongFilename || newFilename !== playingSongFilename);
   var returnToLive = isPreviewMsg && playingSongFilename && (newFilename === playingSongFilename);
   var liveAdvance  = !isPreviewMsg;
 
@@ -1312,6 +1319,10 @@ function handleSong(msg) {
   scrollState.lastFrameScrollY = 0;
 
   requestAnimationFrame(function() {
+    // Bail if another handleSong fired before this rAF — our song data is stale
+    // and the DOM has already been overwritten with the newer song's content.
+    if (myGeneration !== songGeneration) return;
+
     buildAnchors(song);
 
     if (returnToLive && wasInPreview && transportState === 'playing') {
@@ -1550,7 +1561,7 @@ function handleTransport(msg) {
     // resyncScrollAfterEdit will land the user correctly on close.
     if (!editorActive) {
       scrollState.scrollingProgrammatically = true;
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      window.scrollTo(0, 0);
       scrollState.lastFrameScrollY = 0;
       scrollState.scrollingProgrammatically = false;
     }
@@ -1644,10 +1655,14 @@ function renderSetProgress(state) {
 }
 
 // ---------- Visual Metronome ----------
+// Two modes: (1) driven by live playhead beat messages (preferred, drift-free),
+// (2) setInterval fallback when no playhead messages are arriving.
 var metronome = {
   intervalId: null,
   tick: 0,
-  tempo: 0
+  tempo: 0,
+  lastBeatAt: 0,    // performance.now() of last playhead-driven flash
+  useLiveBeat: false // true when playhead messages are actively driving the dots
 };
 
 function startMetronome(bpm) {
@@ -1655,17 +1670,32 @@ function startMetronome(bpm) {
   if (!bpm || bpm <= 0) return;
   metronome.tempo = bpm;
   metronome.tick = 0;
+  metronome.useLiveBeat = false;
   updateMetronomeDots();
   var ms = 60000 / bpm;
   metronome.intervalId = setInterval(function() {
+    // If live beat messages are driving the dots, skip the interval flash
+    // to avoid double-flashing. Fall back after 3s of silence (M4L disconnected).
+    if (metronome.useLiveBeat && (performance.now() - metronome.lastBeatAt) < 3000) return;
+    metronome.useLiveBeat = false;
     metronome.tick = 1 - metronome.tick;
     updateMetronomeDots();
   }, ms);
 }
 
+// Called by handlePlayhead on every beat — drift-free, synced to Ableton.
+function flashMetronomeBeat(beat) {
+  if (!metronome.intervalId) return; // metronome not running
+  metronome.useLiveBeat = true;
+  metronome.lastBeatAt = performance.now();
+  metronome.tick = (beat % 2 === 1) ? 0 : 1; // odd beats = dot0, even = dot1
+  updateMetronomeDots();
+}
+
 function stopMetronome() {
   if (metronome.intervalId) { clearInterval(metronome.intervalId); metronome.intervalId = null; }
   metronome.tick = 0;
+  metronome.useLiveBeat = false;
   if (el.metroDot0) el.metroDot0.classList.remove('lit');
   if (el.metroDot1) el.metroDot1.classList.remove('lit');
 }
@@ -2169,6 +2199,8 @@ function handlePlayhead(msg) {
   // Update beats-per-bar from Ableton's time signature if provided.
   // This keeps bar-extrapolation accurate for songs in 3/4, 6/8, etc.
   if (msg.bpb && msg.bpb > 0) scrollState.bpb = msg.bpb;
+  // Drive visual metronome from live beat (drift-free)
+  if (prefs.showMetronome) flashMetronomeBeat(msg.beat || 1);
   // Refresh the bar label even when the rAF scrollTick isn't running
   // (e.g. transport is paused and Ableton is sending playhead while idle).
   updateBarLabel();
@@ -2213,6 +2245,9 @@ function startScrollLoop() {
   // Editor freezes the scroll engine. Block re-arming from transport msgs
   // (e.g., another tablet hits play while this one is editing).
   if (editorActive) return;
+  // Don't start the scroll loop if no song is loaded — avoids a leaked
+  // 60fps rAF loop doing nothing when transport plays before first scene.
+  if (!currentSongData) return;
   stopScrollLoop();
   scrollState.rafId = requestAnimationFrame(scrollTick);
 }
@@ -2221,6 +2256,11 @@ function showTargetLine(vis) {
   el.scrollTargetLine.classList.toggle('active', vis);
   if (vis) el.scrollTargetLine.style.top = (window.innerHeight * scrollState.targetRatio) + 'px';
 }
+window.addEventListener('resize', function() {
+  if (el.scrollTargetLine.classList.contains('active')) {
+    el.scrollTargetLine.style.top = (window.innerHeight * scrollState.targetRatio) + 'px';
+  }
+});
 
 // ---------- Preview mode (displayed song != playing song) ----------
 function showPreviewBanner() {
@@ -2323,7 +2363,7 @@ document.body.addEventListener('dblclick', function() {
     wsSend({ type: 'save_song', filename: currentSongFilename, content: content });
   }
 
-  elEdit.btn.addEventListener('click', toggleEditor);
+  elEdit.btn.addEventListener('click', function() { toggleEditor(); });
   elEdit.cancel.addEventListener('click', function() { closeEditor(); });
   elEdit.save.addEventListener('click', saveEditor);
 

@@ -777,14 +777,19 @@ function gotoIndex(index) {
         console.log('gotoIndex: index ' + index + ' out of range [0,' + (setList.length - 1) + ']');
         return;
     }
-    // Primary path: relay to M4L via UDP — Ableton becomes source of truth
-    // and broadcasts the scene change back to ALL clients uniformly.
-    udpBridge.sendCommand({ type: 'command', action: 'goto', index: index });
-    console.log('gotoIndex: sent UDP goto index=' + index);
 
-    // Also do local fallback in case M4L isn't connected (standalone mode).
-    // The UDP command is fire-and-forget; if M4L IS connected, its scene
-    // change will arrive via onScene and re-broadcast (idempotent).
+    // If M4L has been heard from recently (within 30s), relay via UDP only.
+    // M4L will change Ableton's scene and the resulting onScene callback will
+    // broadcast to all clients uniformly. Running the local fallback when M4L
+    // IS connected causes a double-broadcast with stale elapsed timestamps.
+    if (udpBridge.isAlive()) {
+        udpBridge.sendCommand({ type: 'command', action: 'goto', index: index });
+        console.log('gotoIndex: sent UDP goto index=' + index + ' (M4L alive)');
+        return;
+    }
+
+    // Standalone fallback: no M4L, load locally and broadcast.
+    console.log('gotoIndex: local fallback index=' + index + ' (M4L not alive)');
     songPointer = index;
     var currentItem = setList[songPointer];
     if (typeof currentItem === 'object' && currentItem.type === 'divider') {
@@ -958,10 +963,11 @@ function loadSongBySceneName(sceneName, sceneIndex, sceneCount) {
     if (!match.filename) {
         console.log("UDP scene: NO MATCH for \"" + sceneName + "\" (slug: " + additions.slugify(cleanName) + ")");
         currentlyLoadedSongFile = null;
-        // Send scene-name-only to clients (no lyrics)
+        // Send scene-name-only to clients (no lyrics). Cache for late-joiners.
         var payload = { "command": 0, "song": { title: cleanName, lines: [], metadata: {} }, "noLyrics": true };
+        currentSongPayload = JSON.stringify(payload);
         for (var i = 0; i < remoteConnection.length; i++) {
-            remoteConnection[i].sendUTF(JSON.stringify(payload));
+            remoteConnection[i].sendUTF(currentSongPayload);
         }
         broadcastState();
         return;

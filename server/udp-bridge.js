@@ -24,6 +24,7 @@ var HOST = '127.0.0.1';
 var udpServer = null;
 var udpClient = null;
 var handlers = {};
+var lastHeardAt = 0;  // Date.now() of last message received from M4L
 
 function start(opts) {
   handlers = opts || {};
@@ -34,6 +35,7 @@ function start(opts) {
   udpServer.on('message', function(msg) {
     try {
       var str = msg.toString(); str = str.substring(0, str.lastIndexOf("}") + 1); var data = JSON.parse(str);
+      lastHeardAt = Date.now();
 
       switch (data.type) {
         case 'scene':
@@ -105,10 +107,15 @@ function stop() {
   if (udpClient) { udpClient.close(); udpClient = null; }
 }
 
+function isAlive() {
+  return (Date.now() - lastHeardAt) < 30000;  // heard from M4L within 30s
+}
+
 module.exports = {
   start: start,
   sendCommand: sendCommand,
   stop: stop,
+  isAlive: isAlive,
   LISTEN_PORT: LISTEN_PORT,
   SEND_PORT: SEND_PORT
 };
