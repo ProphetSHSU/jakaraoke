@@ -1,0 +1,542 @@
+{
+  "version": "1.0.0",
+  "project": {
+    "name": "Jakaraoke",
+    "description": "A live performance lyrics/chord display system that synchronizes song display with Ableton Live transport via WebSocket, UDP bridging, and M4L (Max for Live) devices. Supports multiple client views (lyrics teleprompter, navigator, stage monitor) with real-time scroll engine tied to bar/beat playhead.",
+    "languages": ["javascript", "python", "html", "css", "shell"],
+    "frameworks": ["Node.js", "WebSocket", "Max for Live", "Whisper", "Demucs"],
+    "analyzedAt": "2026-06-13T17:05:00Z",
+    "gitCommitHash": "3bf4588183f1d10910f4d289bfdaf4d23782da13"
+  },
+  "nodes": [
+    {
+      "id": "file:server/websocket-server.js",
+      "type": "file",
+      "name": "websocket-server.js",
+      "filePath": "server/websocket-server.js",
+      "summary": "The central Node.js server. Manages song library, setlists, transport state machine (play/pause/stop), HTTPS/HTTP static file serving, WebSocket connections to browser clients, MIDI device access via JZZ, and integration with the UDP bridge for Ableton Live communication.",
+      "tags": ["server", "websocket", "transport", "core"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:server/chordpro-parser.js",
+      "type": "file",
+      "name": "chordpro-parser.js",
+      "filePath": "server/chordpro-parser.js",
+      "summary": "Parser for ChordPro/LivePrompter format song files. Extracts metadata (title, artist, key, tempo, duration, tempo_map), section labels, chord/lyric lines, bar markers, timing directives, and beats-per-bar changes into structured JSON for client rendering.",
+      "tags": ["parser", "chordpro", "music"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:server/udp-bridge.js",
+      "type": "file",
+      "name": "udp-bridge.js",
+      "filePath": "server/udp-bridge.js",
+      "summary": "UDP bridge module connecting the WebSocket server to Ableton Live's M4L device. Listens on port 9899 for JSON from M4L (scene changes, transport, playhead), sends commands back on port 9900 as OSC-formatted messages. Handles Max's trailing comma quirk.",
+      "tags": ["udp", "bridge", "ableton", "networking"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:server/server-additions.js",
+      "type": "file",
+      "name": "server-additions.js",
+      "filePath": "server/server-additions.js",
+      "summary": "Extension module providing: (1) slug-based scene-to-song matching for Ableton scenes, (2) ready-check protocol for band members, (3) client command relay (play/stop/next/prev).",
+      "tags": ["matching", "ready-check", "commands"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:server/test-server-additions.js",
+      "type": "file",
+      "name": "test-server-additions.js",
+      "filePath": "server/test-server-additions.js",
+      "summary": "Unit tests for server-additions.js covering slug matching, scene-to-song resolution, and ready-check protocol.",
+      "tags": ["test"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:public_site/lyrics.html",
+      "type": "file",
+      "name": "lyrics.html",
+      "filePath": "public_site/lyrics.html",
+      "summary": "The primary lyrics teleprompter client. 2434-line single-page app with dual-anchor scroll engine (time-based + bar-based), chord/section display toggles, in-app song editor, font scaling, metronome dots, ready-check UI, settings panel, preview mode, and drift detection. Connects via WebSocket.",
+      "tags": ["client", "ui", "scroll-engine", "teleprompter", "core"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:public_site/navigator.html",
+      "type": "file",
+      "name": "navigator.html",
+      "filePath": "public_site/navigator.html",
+      "summary": "Band navigator view showing prev/current/next song stack, transport controls, ready-check, and setlist position. Designed for performers who need a quick glance at what's coming next. Replaced the TinyBox footswitch controller.",
+      "tags": ["client", "ui", "navigator"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:public_site/stage_monitor.html",
+      "type": "file",
+      "name": "stage_monitor.html",
+      "filePath": "public_site/stage_monitor.html",
+      "summary": "Stage monitor display showing current song title, bar/beat counter, transport state, tempo, and next song preview. Optimized for large text visibility at distance. Minimal, high-contrast design.",
+      "tags": ["client", "ui", "stage-monitor"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:public_site/index.html",
+      "type": "file",
+      "name": "index.html",
+      "filePath": "public_site/index.html",
+      "summary": "Landing page / route selector for the Jakaraoke web app. Links to lyrics view, navigator, and stage monitor.",
+      "tags": ["client", "ui", "landing"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:public_site/test_harness.html",
+      "type": "file",
+      "name": "test_harness.html",
+      "filePath": "public_site/test_harness.html",
+      "summary": "Developer test harness for the WebSocket API. Shows raw server state, allows sending commands, testing song navigation, and inspecting transport/setlist state.",
+      "tags": ["client", "ui", "testing", "debug"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:client/client.html",
+      "type": "file",
+      "name": "client.html (legacy)",
+      "filePath": "client/client.html",
+      "summary": "Original/legacy lyrics client (v1). Predecessor to public_site/lyrics.html. Contains older WebSocket connection logic, basic chord rendering, and simpler scroll approach.",
+      "tags": ["client", "ui", "legacy"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:max_devices/setlist_pilot/setlist_pilot_v2.js",
+      "type": "file",
+      "name": "setlist_pilot_v2.js",
+      "filePath": "max_devices/setlist_pilot/setlist_pilot_v2.js",
+      "summary": "Max for Live (M4L) device JavaScript. Merged Setlist Pilot + Set State Broadcaster. Observes Ableton Live session via LiveAPI (scenes, tracks, transport), handles footswitch MIDI notes for scene navigation, broadcasts state over UDP (port 9899), receives commands on port 9900. Uses plugsync~ for bar/beat. v2.4.0.",
+      "tags": ["m4l", "ableton", "livescript", "udp", "core"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:max_devices/setlist_pilot/generate_setlist_pilot_v2.py",
+      "type": "file",
+      "name": "generate_setlist_pilot_v2.py",
+      "filePath": "max_devices/setlist_pilot/generate_setlist_pilot_v2.py",
+      "summary": "Python generator that produces the Setlist Pilot v2 .amxd file. Constructs the Max patcher JSON with all required objects and writes the binary AMXD format with correct ampf header.",
+      "tags": ["generator", "m4l", "build-tool"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:alignment/align.py",
+      "type": "file",
+      "name": "align.py",
+      "filePath": "alignment/align.py",
+      "summary": "Audio-to-lyrics alignment tool. Uses Demucs for vocal isolation, Whisper for word-level transcription, then aligns Whisper timestamps to ChordPro lyrics using Levenshtein distance matching. Outputs bar markers for automatic scroll synchronization.",
+      "tags": ["alignment", "whisper", "demucs", "audio", "python"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:alignment/batch.py",
+      "type": "file",
+      "name": "batch.py",
+      "filePath": "alignment/batch.py",
+      "summary": "Batch processing script for running align.py across an entire song library. Manages status tracking (batch_status.json), handles failures gracefully, and supports incremental processing.",
+      "tags": ["alignment", "batch", "automation"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "config:server/config.json",
+      "type": "config",
+      "name": "config.json",
+      "filePath": "server/config.json",
+      "summary": "Base server configuration: defines song library paths and names. Machine-specific paths are overridden via config.local.json.",
+      "tags": ["config"],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:server/config.local.json",
+      "type": "config",
+      "name": "config.local.json",
+      "filePath": "server/config.local.json",
+      "summary": "Local machine override for config.json. Contains machine-specific library paths (different paths on dev vs. gig Mac).",
+      "tags": ["config", "local"],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/AI_HANDOFF.md",
+      "type": "document",
+      "name": "AI_HANDOFF.md",
+      "filePath": "docs/AI_HANDOFF.md",
+      "summary": "AI assistant handoff document providing project overview, current state, and context for continuing development.",
+      "tags": ["docs", "handoff"],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/ECOSYSTEM.md",
+      "type": "document",
+      "name": "ECOSYSTEM.md",
+      "filePath": "docs/ECOSYSTEM.md",
+      "summary": "Architecture overview of the Jakaraoke ecosystem: server, clients, M4L device, UDP bridge, and how they interconnect.",
+      "tags": ["docs", "architecture"],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/SETLIST_PILOT_SPEC.md",
+      "type": "document",
+      "name": "SETLIST_PILOT_SPEC.md",
+      "filePath": "docs/SETLIST_PILOT_SPEC.md",
+      "summary": "Specification for the Setlist Pilot M4L device: footswitch mappings, scene navigation, divider detection, UDP protocol, command handling.",
+      "tags": ["docs", "spec", "m4l"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:docs/SET_STATE_BROADCASTER_SPEC.md",
+      "type": "document",
+      "name": "SET_STATE_BROADCASTER_SPEC.md",
+      "filePath": "docs/SET_STATE_BROADCASTER_SPEC.md",
+      "summary": "Specification for Set State Broadcaster: LiveAPI observers, UDP state broadcast protocol (scenes, transport, playhead, tracks).",
+      "tags": ["docs", "spec", "m4l", "udp"],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/TEMPO_HANDLING.md",
+      "type": "document",
+      "name": "TEMPO_HANDLING.md",
+      "filePath": "docs/TEMPO_HANDLING.md",
+      "summary": "Documentation on how tempo_map directives in ChordPro files drive mid-song tempo changes via the M4L device.",
+      "tags": ["docs", "tempo"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:generate_cert.sh",
+      "type": "file",
+      "name": "generate_cert.sh",
+      "filePath": "generate_cert.sh",
+      "summary": "Shell script to generate self-signed SSL certificates for HTTPS with SANs for Jake-Mac.local, localhost, and LAN IP.",
+      "tags": ["ssl", "script", "infrastructure"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:start.sh",
+      "type": "file",
+      "name": "start.sh",
+      "filePath": "start.sh",
+      "summary": "Startup script that launches the Node.js WebSocket server with node-dev for auto-restart.",
+      "tags": ["script", "operations"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:stop.sh",
+      "type": "file",
+      "name": "stop.sh",
+      "filePath": "stop.sh",
+      "summary": "Stop script that kills the running server process.",
+      "tags": ["script", "operations"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:show_network_info.sh",
+      "type": "file",
+      "name": "show_network_info.sh",
+      "filePath": "show_network_info.sh",
+      "summary": "Displays local network info (IP, hostname) to help band members connect their devices.",
+      "tags": ["script", "networking"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/package.json",
+      "type": "file",
+      "name": "package.json",
+      "filePath": "server/package.json",
+      "summary": "Node.js package manifest. Dependencies: jzz (MIDI), websocket (WebSocket server), node-dev (auto-restart).",
+      "tags": ["config", "manifest"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/websocket-server.js:transportPlay",
+      "type": "function",
+      "name": "transportPlay()",
+      "filePath": "server/websocket-server.js",
+      "summary": "Transitions transport state to 'playing'. Handles resume-from-pause (preserves elapsed time) and fresh start. Broadcasts new state to all WebSocket clients.",
+      "tags": ["transport", "state-machine"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/websocket-server.js:transportPause",
+      "type": "function",
+      "name": "transportPause()",
+      "filePath": "server/websocket-server.js",
+      "summary": "Pauses transport, recording elapsed time for later resume.",
+      "tags": ["transport", "state-machine"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/websocket-server.js:transportStop",
+      "type": "function",
+      "name": "transportStop()",
+      "filePath": "server/websocket-server.js",
+      "summary": "Stops transport and resets elapsed time to zero.",
+      "tags": ["transport", "state-machine"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/websocket-server.js:loadLibrary",
+      "type": "function",
+      "name": "loadLibrary()",
+      "filePath": "server/websocket-server.js",
+      "summary": "Loads a song library from disk, scanning for .txt ChordPro files, parsing durations, and discovering setlists in the Setlists/ subfolder.",
+      "tags": ["library", "file-io"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/websocket-server.js:loadSetlist",
+      "type": "function",
+      "name": "loadSetlist()",
+      "filePath": "server/websocket-server.js",
+      "summary": "Loads a setlist file (ordered song list with set dividers) or defaults to alphabetical 'All Songs' mode.",
+      "tags": ["setlist", "navigation"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/websocket-server.js:sendSong",
+      "type": "function",
+      "name": "sendSong()",
+      "filePath": "server/websocket-server.js",
+      "summary": "Navigates to next/prev song in setlist, parses the ChordPro file, and broadcasts the parsed song + metadata to all connected clients. Resets ready-check state.",
+      "tags": ["navigation", "broadcast"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/chordpro-parser.js:parse",
+      "type": "function",
+      "name": "chordpro.parse()",
+      "filePath": "server/chordpro-parser.js",
+      "summary": "Main ChordPro parser: takes raw text, returns {metadata, sections} with typed section entries (line, section, comment, bar, timing, bpb, empty, tag).",
+      "tags": ["parser", "core"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:server/chordpro-parser.js:parseLine",
+      "type": "function",
+      "name": "chordpro.parseLine()",
+      "filePath": "server/chordpro-parser.js",
+      "summary": "Parses a single lyrics line into chord/text segments: [{chord, text}]. Handles mid-word chords like 'Some[B]times'.",
+      "tags": ["parser"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/server-additions.js:matchSceneToSong",
+      "type": "function",
+      "name": "matchSceneToSong()",
+      "filePath": "server/server-additions.js",
+      "summary": "Multi-pass scene-to-song matcher: (1) exact slug match, (2) word-boundary substring, (3) metadata title fallback. Returns filename + confidence.",
+      "tags": ["matching", "slug"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/server-additions.js:slugify",
+      "type": "function",
+      "name": "slugify()",
+      "filePath": "server/server-additions.js",
+      "summary": "Normalizes names for comparison: lowercase, strip apostrophes/punctuation, collapse whitespace.",
+      "tags": ["utility", "matching"],
+      "complexity": "simple"
+    },
+    {
+      "id": "concept:scroll-engine",
+      "type": "concept",
+      "name": "Dual-Anchor Scroll Engine",
+      "summary": "The lyrics client uses two synchronization modes: timeAnchors (elapsed clock-based) and barAnchors (live plugsync bar/beat numbers). Automatically selects the best mode. Supports fractional bar interpolation, user offset absorption, and drift detection.",
+      "tags": ["scroll", "synchronization", "core-concept"],
+      "complexity": "complex"
+    },
+    {
+      "id": "concept:transport-state-machine",
+      "type": "concept",
+      "name": "Transport State Machine",
+      "summary": "Three states: stopped → playing → paused. Stop resets to top. Pause preserves elapsed for resume. Server-side state mirrored by M4L device observing Ableton's actual transport. Ready-check resets on song change only.",
+      "tags": ["transport", "state-machine", "protocol"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "concept:udp-protocol",
+      "type": "concept",
+      "name": "UDP Wire Protocol",
+      "summary": "Port 9899: M4L→server (raw JSON + trailing comma from Max udpsend). Port 9900: server→M4L (OSC-formatted with /j address). Message types: scene, transport, scenes, playhead, tracks. Commands: play, stop, next, prev, refresh, goto, toggle_track, set_tempo_schedule.",
+      "tags": ["protocol", "udp", "networking"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "concept:preview-mode",
+      "type": "concept",
+      "name": "Preview Mode",
+      "summary": "When transport is playing and user navigates to a different song, scroll engine pauses, banner shows now-playing title, playhead state cached. Returning to playing song re-anchors immediately from cached state.",
+      "tags": ["ui", "navigation", "client"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "concept:ready-check",
+      "type": "concept",
+      "name": "Ready-Check Protocol",
+      "summary": "Players register with name, toggle ready state. Server broadcasts readyState to all clients on change. Resets on song change ONLY — not on stop (accidental stop shouldn't penalize) and not on play.",
+      "tags": ["protocol", "multiplayer"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "concept:chordpro-format",
+      "type": "concept",
+      "name": "ChordPro/LivePrompter Format",
+      "summary": "Song files use extended ChordPro format with custom directives: {tempo_map: bar:bpm,...}, {bar: N}, {d_time: M:SS}, {beats_per_bar: N}, {color: hex}. Chords in [brackets] inline with lyrics. 74% of lines have mid-word chords.",
+      "tags": ["format", "music", "parser"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "concept:scene-matching",
+      "type": "concept",
+      "name": "Scene-to-Song Matching",
+      "summary": "Ableton scene names matched to ChordPro filenames via slugification (lowercase, strip punctuation, collapse whitespace) → substring match → metadata title fallback. Enables automatic song loading on scene change.",
+      "tags": ["matching", "ableton", "automation"],
+      "complexity": "moderate"
+    }
+  ],
+  "edges": [
+    { "source": "file:server/websocket-server.js", "target": "file:server/chordpro-parser.js", "type": "imports", "direction": "forward", "weight": 0.7, "description": "requires('./chordpro-parser')" },
+    { "source": "file:server/websocket-server.js", "target": "file:server/server-additions.js", "type": "imports", "direction": "forward", "weight": 0.7, "description": "requires('./server-additions')" },
+    { "source": "file:server/websocket-server.js", "target": "file:server/udp-bridge.js", "type": "imports", "direction": "forward", "weight": 0.7, "description": "requires('./udp-bridge')" },
+    { "source": "file:server/websocket-server.js", "target": "config:server/config.json", "type": "reads_from", "direction": "forward", "weight": 0.6, "description": "reads config at startup" },
+    { "source": "file:server/websocket-server.js", "target": "config:server/config.local.json", "type": "reads_from", "direction": "forward", "weight": 0.6, "description": "optional local overrides" },
+    { "source": "file:server/websocket-server.js", "target": "file:public_site/lyrics.html", "type": "serves", "direction": "forward", "weight": 0.5, "description": "static file serving + WebSocket" },
+    { "source": "file:server/websocket-server.js", "target": "file:public_site/navigator.html", "type": "serves", "direction": "forward", "weight": 0.5, "description": "static file serving + WebSocket" },
+    { "source": "file:server/websocket-server.js", "target": "file:public_site/stage_monitor.html", "type": "serves", "direction": "forward", "weight": 0.5, "description": "static file serving + WebSocket" },
+    { "source": "file:server/websocket-server.js", "target": "file:public_site/index.html", "type": "serves", "direction": "forward", "weight": 0.5 },
+    { "source": "file:server/websocket-server.js", "target": "file:public_site/test_harness.html", "type": "serves", "direction": "forward", "weight": 0.5 },
+    { "source": "file:server/websocket-server.js", "target": "concept:transport-state-machine", "type": "implements", "direction": "forward", "weight": 0.9 },
+    { "source": "file:server/websocket-server.js", "target": "concept:scene-matching", "type": "implements", "direction": "forward", "weight": 0.8 },
+    { "source": "file:server/udp-bridge.js", "target": "concept:udp-protocol", "type": "implements", "direction": "forward", "weight": 0.9 },
+    { "source": "file:server/udp-bridge.js", "target": "file:max_devices/setlist_pilot/setlist_pilot_v2.js", "type": "related", "direction": "bidirectional", "weight": 0.5, "description": "communicates via UDP ports 9899/9900" },
+    { "source": "file:server/chordpro-parser.js", "target": "concept:chordpro-format", "type": "implements", "direction": "forward", "weight": 0.9 },
+    { "source": "file:server/server-additions.js", "target": "concept:ready-check", "type": "implements", "direction": "forward", "weight": 0.9 },
+    { "source": "file:server/server-additions.js", "target": "concept:scene-matching", "type": "implements", "direction": "forward", "weight": 0.9 },
+    { "source": "file:server/test-server-additions.js", "target": "file:server/server-additions.js", "type": "tested_by", "direction": "forward", "weight": 0.5 },
+    { "source": "file:public_site/lyrics.html", "target": "concept:scroll-engine", "type": "implements", "direction": "forward", "weight": 0.9 },
+    { "source": "file:public_site/lyrics.html", "target": "concept:preview-mode", "type": "implements", "direction": "forward", "weight": 0.9 },
+    { "source": "file:public_site/lyrics.html", "target": "concept:ready-check", "type": "depends_on", "direction": "forward", "weight": 0.6, "description": "displays ready state" },
+    { "source": "file:public_site/lyrics.html", "target": "file:server/websocket-server.js", "type": "depends_on", "direction": "forward", "weight": 0.6, "description": "connects via WebSocket" },
+    { "source": "file:public_site/navigator.html", "target": "concept:ready-check", "type": "depends_on", "direction": "forward", "weight": 0.6 },
+    { "source": "file:public_site/navigator.html", "target": "file:server/websocket-server.js", "type": "depends_on", "direction": "forward", "weight": 0.6, "description": "connects via WebSocket" },
+    { "source": "file:public_site/stage_monitor.html", "target": "file:server/websocket-server.js", "type": "depends_on", "direction": "forward", "weight": 0.6, "description": "connects via WebSocket" },
+    { "source": "file:max_devices/setlist_pilot/setlist_pilot_v2.js", "target": "concept:udp-protocol", "type": "implements", "direction": "forward", "weight": 0.9 },
+    { "source": "file:max_devices/setlist_pilot/setlist_pilot_v2.js", "target": "concept:transport-state-machine", "type": "depends_on", "direction": "forward", "weight": 0.6, "description": "observes Ableton transport" },
+    { "source": "file:max_devices/setlist_pilot/generate_setlist_pilot_v2.py", "target": "file:max_devices/setlist_pilot/setlist_pilot_v2.js", "type": "related", "direction": "forward", "weight": 0.5, "description": "generates .amxd containing this JS" },
+    { "source": "file:alignment/batch.py", "target": "file:alignment/align.py", "type": "calls", "direction": "forward", "weight": 0.8, "description": "orchestrates batch alignment" },
+    { "source": "file:alignment/align.py", "target": "concept:chordpro-format", "type": "reads_from", "direction": "forward", "weight": 0.6, "description": "parses ChordPro for lyrics text" },
+    { "source": "file:start.sh", "target": "file:server/websocket-server.js", "type": "triggers", "direction": "forward", "weight": 0.6, "description": "launches server" },
+    { "source": "file:generate_cert.sh", "target": "file:server/websocket-server.js", "type": "configures", "direction": "forward", "weight": 0.5, "description": "generates SSL certs used by server" },
+    { "source": "file:server/websocket-server.js", "target": "function:server/websocket-server.js:transportPlay", "type": "contains", "direction": "forward", "weight": 1.0 },
+    { "source": "file:server/websocket-server.js", "target": "function:server/websocket-server.js:transportPause", "type": "contains", "direction": "forward", "weight": 1.0 },
+    { "source": "file:server/websocket-server.js", "target": "function:server/websocket-server.js:transportStop", "type": "contains", "direction": "forward", "weight": 1.0 },
+    { "source": "file:server/websocket-server.js", "target": "function:server/websocket-server.js:loadLibrary", "type": "contains", "direction": "forward", "weight": 1.0 },
+    { "source": "file:server/websocket-server.js", "target": "function:server/websocket-server.js:loadSetlist", "type": "contains", "direction": "forward", "weight": 1.0 },
+    { "source": "file:server/websocket-server.js", "target": "function:server/websocket-server.js:sendSong", "type": "contains", "direction": "forward", "weight": 1.0 },
+    { "source": "file:server/chordpro-parser.js", "target": "function:server/chordpro-parser.js:parse", "type": "contains", "direction": "forward", "weight": 1.0 },
+    { "source": "file:server/chordpro-parser.js", "target": "function:server/chordpro-parser.js:parseLine", "type": "contains", "direction": "forward", "weight": 1.0 },
+    { "source": "file:server/server-additions.js", "target": "function:server/server-additions.js:matchSceneToSong", "type": "contains", "direction": "forward", "weight": 1.0 },
+    { "source": "file:server/server-additions.js", "target": "function:server/server-additions.js:slugify", "type": "contains", "direction": "forward", "weight": 1.0 },
+    { "source": "function:server/websocket-server.js:sendSong", "target": "file:server/chordpro-parser.js", "type": "calls", "direction": "forward", "weight": 0.8, "description": "parses song file on navigation" },
+    { "source": "function:server/websocket-server.js:loadLibrary", "target": "file:server/chordpro-parser.js", "type": "calls", "direction": "forward", "weight": 0.8, "description": "parses each song for duration" },
+    { "source": "function:server/server-additions.js:matchSceneToSong", "target": "function:server/server-additions.js:slugify", "type": "calls", "direction": "forward", "weight": 0.8 },
+    { "source": "function:server/chordpro-parser.js:parse", "target": "function:server/chordpro-parser.js:parseLine", "type": "calls", "direction": "forward", "weight": 0.8 },
+    { "source": "document:docs/ECOSYSTEM.md", "target": "file:server/websocket-server.js", "type": "documents", "direction": "forward", "weight": 0.5 },
+    { "source": "document:docs/SETLIST_PILOT_SPEC.md", "target": "file:max_devices/setlist_pilot/setlist_pilot_v2.js", "type": "documents", "direction": "forward", "weight": 0.5 },
+    { "source": "document:docs/SET_STATE_BROADCASTER_SPEC.md", "target": "concept:udp-protocol", "type": "documents", "direction": "forward", "weight": 0.5 },
+    { "source": "document:docs/TEMPO_HANDLING.md", "target": "concept:chordpro-format", "type": "documents", "direction": "forward", "weight": 0.5 }
+  ],
+  "layers": [
+    {
+      "id": "UI",
+      "name": "UI / Client Layer",
+      "description": "Browser-based client views (lyrics teleprompter, navigator, stage monitor)",
+      "nodeIds": ["file:public_site/lyrics.html", "file:public_site/navigator.html", "file:public_site/stage_monitor.html", "file:public_site/index.html", "file:public_site/test_harness.html", "file:client/client.html", "concept:scroll-engine", "concept:preview-mode"]
+    },
+    {
+      "id": "Service",
+      "name": "Server / Service Layer",
+      "description": "Node.js WebSocket server, ChordPro parser, transport state machine, ready-check",
+      "nodeIds": ["file:server/websocket-server.js", "file:server/chordpro-parser.js", "file:server/server-additions.js", "file:server/test-server-additions.js", "function:server/websocket-server.js:transportPlay", "function:server/websocket-server.js:transportPause", "function:server/websocket-server.js:transportStop", "function:server/websocket-server.js:loadLibrary", "function:server/websocket-server.js:loadSetlist", "function:server/websocket-server.js:sendSong", "function:server/chordpro-parser.js:parse", "function:server/chordpro-parser.js:parseLine", "function:server/server-additions.js:matchSceneToSong", "function:server/server-additions.js:slugify", "concept:transport-state-machine", "concept:ready-check", "concept:scene-matching", "concept:chordpro-format"]
+    },
+    {
+      "id": "Integration",
+      "name": "Integration Layer",
+      "description": "Ableton Live ↔ Server communication via UDP bridge and Max for Live devices",
+      "nodeIds": ["file:server/udp-bridge.js", "file:max_devices/setlist_pilot/setlist_pilot_v2.js", "file:max_devices/setlist_pilot/generate_setlist_pilot_v2.py", "concept:udp-protocol"]
+    },
+    {
+      "id": "Data",
+      "name": "Data / Processing Layer",
+      "description": "Audio alignment pipeline (Demucs + Whisper), ChordPro song files",
+      "nodeIds": ["file:alignment/align.py", "file:alignment/batch.py"]
+    },
+    {
+      "id": "Config",
+      "name": "Configuration",
+      "description": "Server config, package manifests",
+      "nodeIds": ["config:server/config.json", "config:server/config.local.json", "file:server/package.json"]
+    },
+    {
+      "id": "Infrastructure",
+      "name": "Infrastructure / Scripts",
+      "description": "Startup/stop scripts, SSL cert generation, network info",
+      "nodeIds": ["file:generate_cert.sh", "file:start.sh", "file:stop.sh", "file:show_network_info.sh"]
+    },
+    {
+      "id": "Docs",
+      "name": "Documentation",
+      "description": "Specs, handoff docs, architecture references",
+      "nodeIds": ["document:docs/AI_HANDOFF.md", "document:docs/ECOSYSTEM.md", "document:docs/SETLIST_PILOT_SPEC.md", "document:docs/SET_STATE_BROADCASTER_SPEC.md", "document:docs/TEMPO_HANDLING.md"]
+    }
+  ],
+  "tour": [
+    {
+      "order": 1,
+      "title": "The Big Picture — Data Flow",
+      "description": "Jakaraoke is a live performance system. Ableton Live (DAW) drives scene selection and transport. The M4L device observes Live and sends state via UDP to the Node.js server, which broadcasts to band members' phones/tablets over WebSocket. The lyrics scroll in sync with the music.",
+      "nodeIds": ["file:max_devices/setlist_pilot/setlist_pilot_v2.js", "file:server/udp-bridge.js", "file:server/websocket-server.js", "file:public_site/lyrics.html"]
+    },
+    {
+      "order": 2,
+      "title": "Song Files & Parsing",
+      "description": "Songs are stored as ChordPro .txt files with extended directives (tempo_map, bar markers, beats_per_bar). The parser extracts metadata and structures sections for rendering. 74% of lines have mid-word chords.",
+      "nodeIds": ["concept:chordpro-format", "file:server/chordpro-parser.js", "function:server/chordpro-parser.js:parse"]
+    },
+    {
+      "order": 3,
+      "title": "Transport & Navigation",
+      "description": "The transport state machine (stopped/playing/paused) drives scroll timing. Song navigation uses setlist ordering with set dividers. Scene-to-song matching auto-loads songs when Ableton scenes change.",
+      "nodeIds": ["concept:transport-state-machine", "function:server/websocket-server.js:sendSong", "concept:scene-matching", "function:server/server-additions.js:matchSceneToSong"]
+    },
+    {
+      "order": 4,
+      "title": "The Scroll Engine",
+      "description": "The lyrics client has a dual-anchor scroll engine: time-based anchors from elapsed clock, and bar-based anchors from live plugsync bar/beat numbers. Fractional interpolation provides smooth scrolling. Preview mode allows browsing other songs without losing position.",
+      "nodeIds": ["concept:scroll-engine", "concept:preview-mode", "file:public_site/lyrics.html"]
+    },
+    {
+      "order": 5,
+      "title": "UDP Wire Protocol",
+      "description": "The M4L device sends JSON on port 9899 (with Max's trailing comma quirk). The server sends OSC-formatted commands back on 9900 (address /j, type ,s). Message types: scene, transport, playhead, tracks, commands.",
+      "nodeIds": ["concept:udp-protocol", "file:server/udp-bridge.js", "file:max_devices/setlist_pilot/setlist_pilot_v2.js"]
+    },
+    {
+      "order": 6,
+      "title": "Multi-Player Ready Check",
+      "description": "Band members register as players, toggle ready state. The navigator view shows who's ready. Resets on song change only (not on stop — accidental stop shouldn't penalize).",
+      "nodeIds": ["concept:ready-check", "file:server/server-additions.js", "file:public_site/navigator.html"]
+    },
+    {
+      "order": 7,
+      "title": "Audio Alignment Pipeline",
+      "description": "Offline tooling: Demucs isolates vocals, Whisper transcribes word timestamps, then Levenshtein matching aligns to ChordPro lyrics. Outputs bar markers for automatic scroll synchronization.",
+      "nodeIds": ["file:alignment/align.py", "file:alignment/batch.py"]
+    }
+  ]
+}

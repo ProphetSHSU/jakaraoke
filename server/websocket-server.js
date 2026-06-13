@@ -56,6 +56,7 @@ var songDurations = {};
 var currentSongPayload = null;
 var currentlyLoadedSongFile = null;  // filename of song loaded by last scene match (null on divider/no-match) — used by save_song to re-emit tempo_schedule
 var lastTrackPayload = null;
+var lastPlayheadPayload = null;  // cached last playhead msg for late-joiner sync
 var unmatchedScenes = []; // scenes with no matching song file // cached last-sent song payload (for late-joiner sync)      // filename → durationSeconds (parsed from metadata)
 
 // ============================================================
@@ -481,6 +482,7 @@ wsServer.on('request', function(request) {
     connection.sendUTF(JSON.stringify(getStatePayload()));
     if (currentSongPayload) connection.sendUTF(currentSongPayload);
     connection.sendUTF(JSON.stringify(getTransportPayload()));
+    if (lastPlayheadPayload) connection.sendUTF(lastPlayheadPayload);
     connection.sendUTF(JSON.stringify(additions.getReadyStatePayload()));
     if (lastTrackPayload) connection.sendUTF(lastTrackPayload);
 
@@ -553,13 +555,15 @@ wsServer.on('request', function(request) {
           return;
         }
 
-        // Client commands (play/stop/next/prev from navigator/lyrics)
+        // Client commands (play/stop/next/prev/goto from navigator/lyrics)
         if (parsed.type === 'command') {
           additions.handleCommand(parsed, {
             transportPlay: transportPlay,
             transportStop: transportStop,
             transportPause: transportPause,
-            sendSong: sendSong
+            sendSong: sendSong,
+            gotoIndex: gotoIndex,
+            sendUdpCommand: udpBridge.sendCommand
           }, connection._playerName);
           return;
         }
@@ -762,6 +766,31 @@ function getMIDIMessage(message) {
             console.log('MIDI: Stop');
             transportStop();
             break;
+    }
+}
+
+// Jump to a specific setlist index. Sends UDP command to M4L (which changes
+// Ableton's selected scene and triggers the normal scene→song broadcast).
+// Falls back to local pointer-based navigation when M4L is unavailable.
+function gotoIndex(index) {
+    if (index < 0 || index >= setList.length) {
+        console.log('gotoIndex: index ' + index + ' out of range [0,' + (setList.length - 1) + ']');
+        return;
+    }
+    // Primary path: relay to M4L via UDP — Ableton becomes source of truth
+    // and broadcasts the scene change back to ALL clients uniformly.
+    udpBridge.sendCommand({ type: 'command', action: 'goto', index: index });
+    console.log('gotoIndex: sent UDP goto index=' + index);
+
+    // Also do local fallback in case M4L isn't connected (standalone mode).
+    // The UDP command is fire-and-forget; if M4L IS connected, its scene
+    // change will arrive via onScene and re-broadcast (idempotent).
+    songPointer = index;
+    var currentItem = setList[songPointer];
+    if (typeof currentItem === 'object' && currentItem.type === 'divider') {
+        loadSongBySceneName(currentItem.name, index, setList.length);
+    } else if (typeof currentItem === 'string') {
+        loadSongBySceneName(currentItem.replace(/\.txt$/i, ''), index, setList.length);
     }
 }
 
@@ -1021,11 +1050,14 @@ udpBridge.start({
         }
     },
     onPlayhead: function(data) {
-        // data: { type:"playhead", bar, beat }
+        // data: { type:"playhead", bar, beat, bpb }
         // Forward to all WS clients for measure-accurate scroll
         var payload = { "type": "playhead", "bar": data.bar, "beat": data.beat };
+        if (data.bpb) payload.bpb = data.bpb;
+        var payloadStr = JSON.stringify(payload);
+        lastPlayheadPayload = payloadStr;
         for (var i = 0; i < remoteConnection.length; i++) {
-            remoteConnection[i].sendUTF(JSON.stringify(payload));
+            remoteConnection[i].sendUTF(payloadStr);
         }
     },
     onScenes: function(data) {

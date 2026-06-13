@@ -177,6 +177,22 @@ function handleCommand(parsed, serverFunctions, playerName) {
     case 'prev':
       serverFunctions.sendSong(2); // 2 = retreat
       break;
+    case 'goto':
+      // Jump to a specific setlist index. Relays to M4L via UDP (changes
+      // Ableton's selected scene), or falls back to local sendSong-style
+      // navigation when M4L is not connected.
+      if (typeof parsed.index === 'number' && serverFunctions.gotoIndex) {
+        serverFunctions.gotoIndex(parsed.index);
+      } else {
+        console.log('goto: missing index or gotoIndex not wired');
+      }
+      break;
+    case 'toggle_track':
+      // Relay track mute toggle to M4L
+      if (parsed.track && serverFunctions.sendUdpCommand) {
+        serverFunctions.sendUdpCommand({ type: 'command', action: 'toggle_track', track: parsed.track });
+      }
+      break;
     default:
       console.log('Unknown command action: ' + action);
   }

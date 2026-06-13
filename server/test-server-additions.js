@@ -114,15 +114,29 @@ var mockFns = {
   sendSong: function(n) { calls.push('sendSong:' + n); }
 };
 
-additions.handleCommand({ action: 'play' }, mockFns, 'Toni');
-additions.handleCommand({ action: 'stop' }, mockFns, 'Toni');
-additions.handleCommand({ action: 'next' }, mockFns, 'Toni');
-additions.handleCommand({ action: 'prev' }, mockFns, 'Toni');
+var udpCmds = [];
+var mockFnsAll = {
+  transportPlay: function() { calls.push('play'); },
+  transportStop: function() { calls.push('stop'); },
+  transportPause: function() { calls.push('pause'); },
+  sendSong: function(n) { calls.push('sendSong:' + n); },
+  gotoIndex: function(idx) { calls.push('goto:' + idx); },
+  sendUdpCommand: function(cmd) { udpCmds.push(cmd); }
+};
+
+additions.handleCommand({ action: 'play' }, mockFnsAll, 'Toni');
+additions.handleCommand({ action: 'stop' }, mockFnsAll, 'Toni');
+additions.handleCommand({ action: 'next' }, mockFnsAll, 'Toni');
+additions.handleCommand({ action: 'prev' }, mockFnsAll, 'Toni');
+additions.handleCommand({ action: 'goto', index: 5 }, mockFnsAll, 'Toni');
+additions.handleCommand({ action: 'toggle_track', track: 'Original' }, mockFnsAll, 'Toni');
 
 assert(calls[0] === 'play', 'play called');
 assert(calls[1] === 'stop', 'stop called');
 assert(calls[2] === 'sendSong:1', 'next = sendSong(1)');
 assert(calls[3] === 'sendSong:2', 'prev = sendSong(2)');
+assert(calls[4] === 'goto:5', 'goto calls gotoIndex with index');
+assert(udpCmds.length === 1 && udpCmds[0].action === 'toggle_track', 'toggle_track relays to UDP');
 
 // ===== Summary =====
 console.log('\n' + (pass + fail) + ' tests: ' + pass + ' passed, ' + fail + ' failed');

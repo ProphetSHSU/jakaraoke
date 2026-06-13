@@ -1336,9 +1336,14 @@ function handleSong(msg) {
       // Live advance OR preview-back-while-stopped — exit any preview state.
       hidePreviewBanner();
       if (transportState === 'playing') {
-        // Live song change while transport is rolling. Reseed clock and scroll.
-        scrollState.playStartedAt = performance.now();
-        scrollState.elapsedOffset = 0;
+        // Live song change while transport is rolling. Only reseed clock if
+        // handleTransport hasn't already set it (late-joiner: transport msg
+        // arrives between handleSong sync and this rAF, correctly setting
+        // playStartedAt with the real elapsed offset — don't clobber it).
+        if (scrollState.playStartedAt === null) {
+          scrollState.playStartedAt = performance.now();
+          scrollState.elapsedOffset = 0;
+        }
         startScrollLoop();
         showTargetLine(true);
       }
@@ -1536,15 +1541,19 @@ function handleTransport(msg) {
     // last known scene so the user can return to it via preview navigation.
     // Hide banner: nothing is "now playing" while stopped.
     hidePreviewBanner();
+    stopScrollLoop();
     scrollState.elapsedOffset = 0;
     scrollState.playStartedAt = null;
     scrollState.userOffset = 0;
-    scrollState.lastFrameScrollY = 0;
-    stopScrollLoop();
     showTargetLine(false);
     // Don't yank the editor to the top if a stop arrives while editing.
     // resyncScrollAfterEdit will land the user correctly on close.
-    if (!editorActive) window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (!editorActive) {
+      scrollState.scrollingProgrammatically = true;
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      scrollState.lastFrameScrollY = 0;
+      scrollState.scrollingProgrammatically = false;
+    }
   }
 }
 
@@ -1694,7 +1703,11 @@ var scrollState = {
 
   // Engine
   rafId: null,
-  targetRatio: parseFloat(localStorage.getItem('lyrics_target_ratio') || '0.33')
+  targetRatio: parseFloat(localStorage.getItem('lyrics_target_ratio') || '0.33'),
+
+  // Guards
+  scrollingProgrammatically: false,  // true during window.scrollTo — suppresses drift detector
+  lastTouchEndAt: 0                  // performance.now() of last touchend — drift window
 };
 
 // Expose targetRatio as a CSS custom property so .song-content can size its
@@ -1935,7 +1948,10 @@ function findNextRendered(sections, fromIdx, ctn) {
     // hide .song-line.chords-only or .section-label nodes that carry data-si.
     if (node && node.offsetParent !== null) return node.offsetTop - ctn.offsetTop;
   }
-  return ctn.scrollHeight;
+  // No visible rendered node after this directive — return null so the caller
+  // can skip this anchor entirely rather than placing it at scrollHeight
+  // (which includes bottom padding and causes end-of-song overshoot).
+  return null;
 }
 
 function getElapsed() {
@@ -2106,10 +2122,16 @@ function scrollTick() {
   // Drift detector: anything that changed window.scrollY since the last frame
   // (touch drag, wheel, trackpad, mouse, keyboard, etc.) is user input — fold
   // it into userOffset so the manual offset persists across input methods.
-  // 0.5px threshold suppresses subpixel rounding noise.
+  // Guards: skip during programmatic scrollTo (we caused it, not the user),
+  // and only accept drift within 2s of a touch event (filters address-bar
+  // hide/show, orientation changes, and other mobile viewport mutations).
   var drift = window.scrollY - scrollState.lastFrameScrollY;
-  if (Math.abs(drift) > 0.5) {
-    scrollState.userOffset += drift;
+  if (Math.abs(drift) > 0.5 && !scrollState.scrollingProgrammatically) {
+    var sinceTouchEnd = performance.now() - scrollState.lastTouchEndAt;
+    var isUserDrift = scrollState.userTouching || sinceTouchEnd < 2000;
+    if (isUserDrift) {
+      scrollState.userOffset += drift;
+    }
   }
 
   var targetY = getTargetPixelY();
@@ -2118,7 +2140,9 @@ function scrollTick() {
   scrollY = Math.max(0, scrollY);
 
   if (!scrollState.userTouching) {
+    scrollState.scrollingProgrammatically = true;
     window.scrollTo(0, scrollY);
+    scrollState.scrollingProgrammatically = false;
     scrollState.lastFrameScrollY = scrollY;
   } else {
     // Don't fight an active touch drag — would cause iOS jitter. Track current
@@ -2142,6 +2166,9 @@ function handlePlayhead(msg) {
   scrollState.currentBar = msg.bar || 0;
   scrollState.currentBeat = msg.beat || 1;
   scrollState.playheadReceivedAt = performance.now();
+  // Update beats-per-bar from Ableton's time signature if provided.
+  // This keeps bar-extrapolation accurate for songs in 3/4, 6/8, etc.
+  if (msg.bpb && msg.bpb > 0) scrollState.bpb = msg.bpb;
   // Refresh the bar label even when the rAF scrollTick isn't running
   // (e.g. transport is paused and Ableton is sending playhead while idle).
   updateBarLabel();
@@ -2173,10 +2200,12 @@ function handlePlayhead(msg) {
 
   document.addEventListener('touchend', function() {
     scrollState.userTouching = false;
+    scrollState.lastTouchEndAt = performance.now();
   }, { passive: true });
 
   document.addEventListener('touchcancel', function() {
     scrollState.userTouching = false;
+    scrollState.lastTouchEndAt = performance.now();
   }, { passive: true });
 })();
 

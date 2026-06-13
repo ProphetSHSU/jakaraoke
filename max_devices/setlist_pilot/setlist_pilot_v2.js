@@ -978,56 +978,55 @@ function list() {
     if (inlet === 1 && arguments.length >= 2) {
         var bar = Math.floor(arguments[0]);
         var beat = Math.floor(arguments[1]);
-        if (bar !== state.lastBar) {
+        if (bar !== state.lastBar || beat !== state.lastBeat) {
             var prevBar = state.lastBar;
+            var barChanged = (bar !== state.lastBar);
             state.lastBar = bar;
             state.lastBeat = beat;
             if (state.isPlaying) {
-                udpSendQuiet({ type: 'playhead', bar: bar, beat: beat });  // bar-by-bar — silenced to reduce console noise
+                var ph = { type: 'playhead', bar: bar, beat: beat };
+                if (state.timeSig && state.timeSig[0]) ph.bpb = state.timeSig[0];
+                udpSendQuiet(ph);  // beat-by-beat for smooth scroll extrapolation
             }
-            // Rewind/replay detection: if bar moved backwards (clip relaunch,
-            // manual rewind, scene fire from start), re-arm the tempo schedule
-            // from the beginning so subsequent playthroughs fire the same changes.
-            // prevBar=-1 (initial) is not a rewind — only treat real backwards moves.
-            if (prevBar >= 0 && bar < prevBar) {
-                state.tempoFiredIdx = 0;
-                state.tempoFiredCount = 0;
-                post('  REWIND [' + SCRIPT_VERSION + ']: prevBar=' + prevBar + ' -> bar=' + bar + ' — re-armed tempo\n');
-                // If we rewound INTO the pre-first-entry zone and we have a
-                // captured baseline, restore it. Without this, the tempo would
-                // remain stuck at whatever the last fired schedule entry set it
-                // to — wrong for bars before the first programmed change.
-                if (state.baselineTempo !== null
-                    && state.tempoSchedule.length > 0
-                    && bar < state.tempoSchedule[0].bar) {
-                    try {
-                        var lsBl = new LiveAPI('live_set');
-                        lsBl.set('tempo', state.baselineTempo);
-                        post('  TEMPO @ bar ' + bar + ' -> ' + state.baselineTempo + ' BPM (baseline restore — pre-first-entry zone)\n');
-                    } catch (e) { post('  ERR baseline restore: ' + e + '\n'); }
+            // Rewind/replay detection and tempo schedule only fire on bar
+            // changes (not every beat). Beat-only changes just emit playhead.
+            if (barChanged) {
+                if (prevBar >= 0 && bar < prevBar) {
+                    state.tempoFiredIdx = 0;
+                    state.tempoFiredCount = 0;
+                    post('  REWIND [' + SCRIPT_VERSION + ']: prevBar=' + prevBar + ' -> bar=' + bar + ' — re-armed tempo\n');
+                    // If we rewound INTO the pre-first-entry zone and we have a
+                    // captured baseline, restore it. Without this, the tempo would
+                    // remain stuck at whatever the last fired schedule entry set it
+                    // to — wrong for bars before the first programmed change.
+                    if (state.baselineTempo !== null
+                        && state.tempoSchedule.length > 0
+                        && bar < state.tempoSchedule[0].bar) {
+                        try {
+                            var lsBl = new LiveAPI('live_set');
+                            lsBl.set('tempo', state.baselineTempo);
+                            post('  TEMPO @ bar ' + bar + ' -> ' + state.baselineTempo + ' BPM (baseline restore — pre-first-entry zone)\n');
+                        } catch (e) { post('  ERR baseline restore: ' + e + '\n'); }
+                    }
                 }
-            }
-            // Tempo schedule: advance the pointer past every entry whose bar is
-            // <= current bar; fire only the most recent overdue change.
-            // If multiple changes are overdue (e.g. user navigated mid-song),
-            // we collapse them into the latest target — safer than blasting
-            // through every intermediate BPM.
-            // NON-DESTRUCTIVE: tempoSchedule itself is preserved so replays work.
-            if (state.tempoFiredIdx < state.tempoSchedule.length
-                && bar >= state.tempoSchedule[state.tempoFiredIdx].bar) {
-                var lastDue = null;
-                while (state.tempoFiredIdx < state.tempoSchedule.length
-                       && bar >= state.tempoSchedule[state.tempoFiredIdx].bar) {
-                    lastDue = state.tempoSchedule[state.tempoFiredIdx];
-                    state.tempoFiredIdx++;
-                }
-                if (lastDue) {
-                    try {
-                        var ls = new LiveAPI('live_set');
-                        ls.set('tempo', lastDue.bpm);
-                        state.tempoFiredCount++;
-                        post('  TEMPO @ bar ' + bar + ' -> ' + lastDue.bpm + ' BPM (target was bar ' + lastDue.bar + ')\n');
-                    } catch (e) { post('  ERR set tempo: ' + e + '\n'); }
+                // Tempo schedule: advance the pointer past every entry whose bar is
+                // <= current bar; fire only the most recent overdue change.
+                if (state.tempoFiredIdx < state.tempoSchedule.length
+                    && bar >= state.tempoSchedule[state.tempoFiredIdx].bar) {
+                    var lastDue = null;
+                    while (state.tempoFiredIdx < state.tempoSchedule.length
+                           && bar >= state.tempoSchedule[state.tempoFiredIdx].bar) {
+                        lastDue = state.tempoSchedule[state.tempoFiredIdx];
+                        state.tempoFiredIdx++;
+                    }
+                    if (lastDue) {
+                        try {
+                            var ls = new LiveAPI('live_set');
+                            ls.set('tempo', lastDue.bpm);
+                            state.tempoFiredCount++;
+                            post('  TEMPO @ bar ' + bar + ' -> ' + lastDue.bpm + ' BPM (target was bar ' + lastDue.bar + ')\n');
+                        } catch (e) { post('  ERR set tempo: ' + e + '\n'); }
+                    }
                 }
             }
         }
