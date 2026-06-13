@@ -2026,19 +2026,24 @@ function getTargetPixelY() {
     var fracBar = msgFracBar + extraBars;
     var targetY = interpolateAnchors(scrollState.barAnchors, 'bar', fracBar);
 
-    // If we're past the last bar anchor, blend to time-based for the remainder
+    // If we're past the last bar anchor, blend to time-based for the remainder.
+    // Find the elapsed time that corresponds to the last bar anchor's pixelY
+    // position (via inverse interpolation of time anchors), then linearly
+    // scroll from lastBarY → endY over the remaining song duration.
     var lastBarAnchor = scrollState.barAnchors[scrollState.barAnchors.length - 1];
     if (fracBar >= lastBarAnchor.bar && scrollState.songDuration > 0 && scrollState.timeAnchors.length > 1) {
       var elapsed = getElapsed();
-      var timeY = interpolateAnchors(scrollState.timeAnchors, 'time', elapsed);
-      // Blend: use bar position up to last anchor, then time-based for the rest
       var lastBarY = lastBarAnchor.pixelY;
       var endY = scrollState.timeAnchors[scrollState.timeAnchors.length - 1].pixelY;
       if (endY > lastBarY) {
-        var timeEndAnchor = scrollState.timeAnchors[scrollState.timeAnchors.length - 1];
-        var timeFrac = elapsed / timeEndAnchor.time;
-        var remainFrac = Math.max(0, Math.min(1, (timeFrac * endY - lastBarY) / (endY - lastBarY)));
-        targetY = lastBarY + remainFrac * (endY - lastBarY);
+        // Find what elapsed time corresponds to the last bar anchor's pixel position
+        var tAtLastBar = inverseInterpolateAnchors(scrollState.timeAnchors, 'time', lastBarY);
+        var duration = scrollState.timeAnchors[scrollState.timeAnchors.length - 1].time;
+        var remainingTime = duration - tAtLastBar;
+        if (remainingTime > 0) {
+          var remainFrac = Math.max(0, Math.min(1, (elapsed - tAtLastBar) / remainingTime));
+          targetY = lastBarY + remainFrac * (endY - lastBarY);
+        }
       }
     }
     return targetY;
