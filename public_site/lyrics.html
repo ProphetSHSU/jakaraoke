@@ -1368,6 +1368,8 @@ function handleSetBreak(setNumber) {
   if (editorActive) closeEditor();
   currentSongMeta = null;
   currentSongData = null;
+  currentSongFilename = null;
+  currentSongRaw = '';
   stopMetronome();
   hidePreviewBanner();
   scrollState.currentBar = 0;
@@ -1386,6 +1388,8 @@ function handleNoLyrics(title) {
   if (editorActive) closeEditor();
   currentSongMeta = null;
   currentSongData = null;
+  currentSongFilename = null;
+  currentSongRaw = '';
   stopMetronome();
   hidePreviewBanner();
   scrollState.currentBar = 0;
@@ -1860,14 +1864,16 @@ function rebuildScrollGeometry() {
   // Snapshot live runtime state (buildAnchors zeroes most of these).
   // tempo/songDuration are no longer touched by buildAnchors (handleSong
   // owns them synchronously), so they don't need to be in the snapshot.
-  // bpb is re-derived by buildAnchors from sections — same value as the
-  // pre-rebuild snapshot would have, so omitted for cleanliness.
+  // bpb IS snapshotted: buildAnchors resets to 4 unless the ChordPro file
+  // has an explicit {bpb:N} directive, but Ableton's live playhead messages
+  // may have already set the correct value (e.g., 3 for a 3/4 song).
   var snap = {
     currentBar: scrollState.currentBar,
     currentBeat: scrollState.currentBeat,
     playheadReceivedAt: scrollState.playheadReceivedAt,
     playStartedAt: scrollState.playStartedAt,
-    elapsedOffset: scrollState.elapsedOffset
+    elapsedOffset: scrollState.elapsedOffset,
+    bpb: scrollState.bpb
   };
 
   // Convert userOffset (px) → key-units using PRE-rebuild density.
@@ -1890,6 +1896,7 @@ function rebuildScrollGeometry() {
   scrollState.playheadReceivedAt = snap.playheadReceivedAt;
   scrollState.playStartedAt = snap.playStartedAt;
   scrollState.elapsedOffset = snap.elapsedOffset;
+  scrollState.bpb = snap.bpb;
 
   // Convert key-units → px using POST-rebuild density. If mode flipped (rare:
   // bar tags fell out because they were anchored on a now-hidden node), zero
@@ -2277,6 +2284,9 @@ window.addEventListener('resize', function() {
   if (el.scrollTargetLine.classList.contains('active')) {
     el.scrollTargetLine.style.top = (window.innerHeight * scrollState.targetRatio) + 'px';
   }
+  // Rotation/resize reflows all lyrics lines — anchor pixelY values are stale.
+  // Rebuild geometry so scroll engine interpolates against correct positions.
+  scheduleScrollGeometryRebuild();
 });
 
 // ---------- Preview mode (displayed song != playing song) ----------
