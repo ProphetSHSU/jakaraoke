@@ -660,10 +660,12 @@ wsServer.on('request', function(request) {
     connection.on('close', function(reasonCode, description) {
         console.log('Client has disconnected.');
         additions.unregisterPlayer(connection);
-        additions.broadcastReadyState(remoteConnection);
-        // Remove from connection list
+        // Remove from connection list BEFORE broadcasting — sendUTF on a
+        // closed connection throws, which would crash the server or abort
+        // the broadcast loop before reaching remaining valid clients.
         var idx = remoteConnection.indexOf(connection);
         if (idx > -1) remoteConnection.splice(idx, 1);
+        additions.broadcastReadyState(remoteConnection);
     });
 });
 

@@ -1365,6 +1365,7 @@ function handleSong(msg) {
 }
 
 function handleSetBreak(setNumber) {
+  if (editorActive) closeEditor();
   currentSongMeta = null;
   currentSongData = null;
   stopMetronome();
@@ -1382,6 +1383,7 @@ function handleSetBreak(setNumber) {
 }
 
 function handleNoLyrics(title) {
+  if (editorActive) closeEditor();
   currentSongMeta = null;
   currentSongData = null;
   stopMetronome();
@@ -2149,6 +2151,13 @@ function scrollTick() {
   // and window.scrollTo would fight cursor positioning in the textarea.
   if (editorActive) return;
 
+  // Watchdog: if userTouching is stuck true (OS swallowed touchcancel),
+  // release it after 5s of no touch activity. Without this, auto-scroll
+  // is silently disabled until page reload.
+  if (scrollState.userTouching && performance.now() - scrollState.lastTouchEndAt > 5000) {
+    scrollState.userTouching = false;
+  }
+
   // Drift detector: anything that changed window.scrollY since the last frame
   // (touch drag, wheel, trackpad, mouse, keyboard, etc.) is user input — fold
   // it into userOffset so the manual offset persists across input methods.
@@ -2229,6 +2238,14 @@ function handlePlayhead(msg) {
   document.addEventListener('touchstart', function() {
     scrollState.userTouching = true;
   }, { passive: true });
+
+  // Watchdog: if a system-modal interruption (Control Center, incoming call,
+  // app switcher) swallows touchcancel, userTouching stays true forever and
+  // auto-scroll is silently disabled. Reset on visibility change (tab/app
+  // switch) since no finger can be touching when the page is hidden.
+  document.addEventListener('visibilitychange', function() {
+    if (document.hidden) scrollState.userTouching = false;
+  });
 
   document.addEventListener('touchend', function() {
     scrollState.userTouching = false;
