@@ -138,6 +138,26 @@ assert(calls[3] === 'sendSong:2', 'prev = sendSong(2)');
 assert(calls[4] === 'goto:5', 'goto calls gotoIndex with index');
 assert(udpCmds.length === 1 && udpCmds[0].action === 'toggle_track', 'toggle_track relays to UDP');
 
+// Test play/stop relay when M4L is alive
+var udpCmds2 = [];
+var mockFnsM4L = {
+  transportPlay: function() { calls.push('localPlay'); },
+  transportStop: function() { calls.push('localStop'); },
+  transportPause: function() { calls.push('localPause'); },
+  sendSong: function(n) { calls.push('sendSong:' + n); },
+  gotoIndex: function(idx) { calls.push('goto:' + idx); },
+  sendUdpCommand: function(cmd) { udpCmds2.push(cmd); },
+  isM4LAlive: function() { return true; }
+};
+calls = [];
+additions.handleCommand({ action: 'play' }, mockFnsM4L, 'Nate');
+additions.handleCommand({ action: 'stop' }, mockFnsM4L, 'Nate');
+assert(udpCmds2.length === 2, 'play+stop relayed to M4L when alive');
+assert(udpCmds2[0].action === 'play', 'play relayed to M4L');
+assert(udpCmds2[1].action === 'stop', 'stop relayed to M4L');
+assert(calls.indexOf('localPlay') === -1, 'local transportPlay NOT called when M4L alive');
+assert(calls.indexOf('localStop') === -1, 'local transportStop NOT called when M4L alive');
+
 // ===== Summary =====
 console.log('\n' + (pass + fail) + ' tests: ' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail > 0 ? 1 : 0);

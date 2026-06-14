@@ -163,10 +163,19 @@ function handleCommand(parsed, serverFunctions, playerName) {
 
   switch (action) {
     case 'play':
-      serverFunctions.transportPlay();
+      // Relay to M4L (fires scene with bar reset) when connected; local fallback otherwise.
+      if (serverFunctions.sendUdpCommand && serverFunctions.isM4LAlive && serverFunctions.isM4LAlive()) {
+        serverFunctions.sendUdpCommand({ type: 'command', action: 'play' });
+      } else {
+        serverFunctions.transportPlay();
+      }
       break;
     case 'stop':
-      serverFunctions.transportStop();
+      if (serverFunctions.sendUdpCommand && serverFunctions.isM4LAlive && serverFunctions.isM4LAlive()) {
+        serverFunctions.sendUdpCommand({ type: 'command', action: 'stop' });
+      } else {
+        serverFunctions.transportStop();
+      }
       break;
     case 'pause':
       serverFunctions.transportPause();

@@ -565,7 +565,8 @@ wsServer.on('request', function(request) {
             transportPause: transportPause,
             sendSong: sendSong,
             gotoIndex: gotoIndex,
-            sendUdpCommand: udpBridge.sendCommand
+            sendUdpCommand: udpBridge.sendCommand,
+            isM4LAlive: udpBridge.isAlive
           }, connection._playerName);
           return;
         }
