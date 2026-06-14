@@ -1323,6 +1323,14 @@ function handleSong(msg) {
     // and the DOM has already been overwritten with the newer song's content.
     if (myGeneration !== songGeneration) return;
 
+    // Snapshot bar/beat state INSIDE the rAF — by now, handlePlayhead may have
+    // arrived (especially for late-joiners) and set the correct bar position.
+    // buildAnchors zeroes currentBar/Beat, so we must restore them for bar-mode
+    // songs to scroll correctly from the first frame.
+    var preBar = scrollState.currentBar;
+    var preBeat = scrollState.currentBeat;
+    var prePlayheadAt = scrollState.playheadReceivedAt;
+
     buildAnchors(song);
 
     if (returnToLive && wasInPreview && transportState === 'playing') {
@@ -1347,6 +1355,12 @@ function handleSong(msg) {
       // Live advance OR preview-back-while-stopped — exit any preview state.
       hidePreviewBanner();
       if (transportState === 'playing') {
+        // Restore bar/beat state that buildAnchors zeroed. Critical for bar-mode
+        // songs: without this, fracBar = 0 → targetY = 0 → page pinned at top
+        // until the next playhead message arrives from M4L.
+        scrollState.currentBar = preBar;
+        scrollState.currentBeat = preBeat;
+        scrollState.playheadReceivedAt = prePlayheadAt;
         // Live song change while transport is rolling. Only reseed clock if
         // handleTransport hasn't already set it (late-joiner: transport msg
         // arrives between handleSong sync and this rAF, correctly setting

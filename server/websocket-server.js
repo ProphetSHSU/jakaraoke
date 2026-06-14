@@ -1,4 +1,6 @@
 //const { Navigator } = require("node-navigator");
+var SERVER_VERSION = '2.5.0-scroll-audit';
+console.log('jakaraoke-server v' + SERVER_VERSION + ' starting...');
 //const navigator = new Navigator();
 
 //https://github.com/jazz-soft/JZZ - jzz is a node.js midi tool
