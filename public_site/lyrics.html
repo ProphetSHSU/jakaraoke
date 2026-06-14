@@ -1575,6 +1575,7 @@ function handleTransport(msg) {
     // Hide banner: nothing is "now playing" while stopped.
     hidePreviewBanner();
     stopScrollLoop();
+    stopMetronome();
     scrollState.elapsedOffset = 0;
     scrollState.playStartedAt = null;
     scrollState.userOffset = 0;

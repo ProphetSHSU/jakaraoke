@@ -896,7 +896,11 @@ function connectWebSocket() {
       }
       if (msg.type === 'transport') {
         transportState = msg.state || 'stopped';
-        if (msg.tempo && msg.tempo > 0 && currentSongMeta) startMetronome(msg.tempo);
+        if (transportState === 'playing' && msg.tempo && msg.tempo > 0 && currentSongMeta) {
+          startMetronome(msg.tempo);
+        } else if (transportState === 'stopped') {
+          stopMetronome();
+        }
         renderPlayButton();
         return;
       }
