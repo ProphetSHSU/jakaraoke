@@ -804,99 +804,20 @@ function gotoIndex(index) {
 }
 
 function sendSong(note) {
-    console.log('entering sendSong - note: ' + note)
-
-    //if note is 2 descend, else ascend
-    var success = false;
-    if(note == 2) {
-        success = retreatToPrevSong();
-    } else {
-        success = advanceToNextSong();
-    }
-
-    if (!success) {
-        console.log('No more items in that direction');
+    // Compute target index from current position + direction
+    var targetIdx = (note == 2) ? songPointer - 1 : songPointer + 1;
+    if (targetIdx < 0 || targetIdx >= setList.length) {
+        console.log('sendSong: no more items (target=' + targetIdx + ')');
         broadcastState();
         return;
     }
-
-    var currentItem = setList[songPointer];
-    
-    // Check if we landed on a divider (set break)
-    if (typeof currentItem === 'object' && currentItem.type === 'divider') {
-        console.log('At set break (divider) - Set ' + currentItem.setNumber);
-        
-        // Reset transport at set breaks
-        if (transport.state !== 'stopped') {
-            transport.state = 'stopped';
-            transport.elapsedAtPause = 0;
-            transport.playStartedAt = null;
-        }
-
-        // Send set break message to clients
-        var payload = {
-            "command": 0,
-            "setBreak": true,
-            "setNumber": currentItem.setNumber
-        };
-
-        for (var i = 0; i < remoteConnection.length; i++) {
-            remoteConnection[i].sendUTF(JSON.stringify(payload));
-        }
-
-        // Also broadcast updated state and transport reset
-        broadcastState();
-        broadcastTransport();
-
-        // Reset ready-check on set break
-        additions.resetAllReady();
-        additions.broadcastReadyState(remoteConnection);
-        return;
-    }
-
-    // It's a song - load and send it
-    var songPath = getSongPath(currentItem);
-
-    console.log('song = ' + currentItem + ' (path: ' + songPath + ')')
-
-    try{
-        var songText = fs.readFileSync(songPath).toString('utf-8');
-        var parsed = chordpro.parse(songText);
-
-        // Phase 2b: Ableton is source of truth. Selection-only scene changes
-        // (next/prev navigation via MIDI program change) must NOT touch
-        // transport.state — see loadSongBySceneName for full rationale.
-        if (parsed.metadata.tempo) {
-            transport.tempo = parsed.metadata.tempo;
-        }
-
-        var payload = {
-            "command": 0,
-            "song": parsed,
-            "songRaw": songText,
-            "filename": currentItem,
-            "live": true
-        }
-
-        currentSongPayload = JSON.stringify(payload);
-        var arrayLength = remoteConnection.length;
-        console.log("array Length = " + arrayLength)
-        for (var i = 0; i < arrayLength; i++) {
-            remoteConnection[i].sendUTF(currentSongPayload);
-            console.log('songPointer: ' + songPointer)
-        }
-
-        // Also broadcast updated state and transport reset so clients know the current position
-        broadcastState();
-        broadcastTransport();
-
-        // Reset ready-check on song change
-        additions.resetAllReady();
-        additions.broadcastReadyState(remoteConnection);
-
-    } catch(error) {
-        console.log(error)
-    }
+    // Delegate to gotoIndex which handles:
+    //   - M4L alive: relays to Ableton (scene change -> fresh transport/playhead)
+    //   - M4L dead:  local fallback (loads song file, broadcasts)
+    // This ensures "next without stop" correctly advances Ableton's scene,
+    // giving clients fresh bar=1 playhead instead of stale bar=47 from the
+    // previous song.
+    gotoIndex(targetIdx);
 }
     
 
@@ -970,6 +891,7 @@ function loadSongBySceneName(sceneName, sceneIndex, sceneCount) {
         // Send scene-name-only to clients (no lyrics). Cache for late-joiners.
         var payload = { "command": 0, "song": { title: cleanName, lines: [], metadata: {} }, "noLyrics": true };
         currentSongPayload = JSON.stringify(payload);
+        lastPlayheadPayload = null;
         for (var i = 0; i < remoteConnection.length; i++) {
             remoteConnection[i].sendUTF(currentSongPayload);
         }
@@ -1013,8 +935,18 @@ function loadSongBySceneName(sceneName, sceneIndex, sceneCount) {
 
         var payload = { "command": 0, "song": parsed, "songRaw": songText, "filename": match.filename, "live": true };
         currentSongPayload = JSON.stringify(payload);
+        lastPlayheadPayload = null;  // stale bar from previous song — don't send to late-joiners
         for (var i = 0; i < remoteConnection.length; i++) {
             remoteConnection[i].sendUTF(currentSongPayload);
+        }
+
+        // Reset transport clock: a scene change means the new clip starts from
+        // the beginning. Without this, broadcastTransport sends stale elapsed
+        // (from the old song's playStartedAt), causing time-mode clients to
+        // scroll the new song to the wrong position.
+        if (transport.state === 'playing') {
+            transport.playStartedAt = Date.now();
+            transport.elapsedAtPause = 0;
         }
 
         broadcastState();

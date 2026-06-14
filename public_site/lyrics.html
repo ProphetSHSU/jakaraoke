@@ -1317,6 +1317,14 @@ function handleSong(msg) {
   scrollState.elapsedOffset = 0;
   scrollState.userOffset = 0;
   scrollState.lastFrameScrollY = 0;
+  // On live advance (scene change), reset bar/beat — stale values from the
+  // previous song would cause getTargetPixelY to scroll to the bottom of the
+  // new song. Fresh playhead from M4L (bar 1) will arrive once Ableton starts.
+  if (liveAdvance) {
+    scrollState.currentBar = 0;
+    scrollState.currentBeat = 0;
+    scrollState.playheadReceivedAt = null;
+  }
 
   requestAnimationFrame(function() {
     // Bail if another handleSong fired before this rAF — our song data is stale
@@ -1355,21 +1363,15 @@ function handleSong(msg) {
       // Live advance OR preview-back-while-stopped — exit any preview state.
       hidePreviewBanner();
       if (transportState === 'playing') {
-        // Restore bar/beat state that buildAnchors zeroed. Critical for bar-mode
-        // songs: without this, fracBar = 0 → targetY = 0 → page pinned at top
-        // until the next playhead message arrives from M4L.
-        scrollState.currentBar = preBar;
-        scrollState.currentBeat = preBeat;
-        scrollState.playheadReceivedAt = prePlayheadAt;
-        // Live song change while transport is rolling. Only reseed clock if
-        // handleTransport hasn't already set it (late-joiner: transport msg
-        // arrives between handleSong sync and this rAF, correctly setting
-        // playStartedAt with the real elapsed offset — don't clobber it).
-        if (scrollState.playStartedAt === null) {
-          scrollState.playStartedAt = performance.now();
-          scrollState.elapsedOffset = 0;
-        }
-        startScrollLoop();
+        // DON'T restore preBar/preBeat here — for a scene change, they hold
+        // the PREVIOUS song's stale bar (e.g. bar 47) which would scroll the
+        // new song to the bottom. Leave currentBar at 0 (set above).
+        // DON'T start scroll loop — wait for handleTransport with fresh state
+        // from M4L's scene-change broadcast (elapsed=0, state=playing). This
+        // prevents the brief window where stale playhead messages from the old
+        // song could scroll us to the wrong position.
+        // For late-joiners: the cached transport msg arrives right after this
+        // and startScrollLoop is called from handleTransport.
         showTargetLine(true);
       }
       // (else: stopped — scroll loop already stopped)
