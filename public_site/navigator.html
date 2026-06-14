@@ -264,6 +264,79 @@
       color: #e94560;
     }
     .track-btn:active { transform: scale(0.95); }
+    .track-btn.lights { border-color: #ffd93d; color: #ffd93d; }
+    .track-btn.lights.open { background: rgba(255, 217, 61, 0.15); }
+
+    /* === LIGHTING DRAWER === */
+    .lighting-drawer {
+      display: none;
+      padding: 10px 16px 12px;
+      background: var(--bg-strip, #0a0a12);
+      border-top: 1px solid #1a1a2e;
+      gap: 10px;
+      flex-direction: column;
+    }
+    .lighting-drawer.open { display: flex; }
+    .lighting-drawer .blackout-btn {
+      width: 100%; padding: 12px;
+      border-radius: 8px; border: 2px solid #e94560;
+      background: rgba(233, 69, 96, 0.15);
+      color: #e94560; font-size: 15px; font-weight: 800;
+      cursor: pointer; text-align: center;
+      text-transform: uppercase; letter-spacing: 0.1em;
+      touch-action: manipulation;
+      transition: all 0.15s;
+    }
+    .lighting-drawer .blackout-btn:active {
+      background: #e94560; color: #fff; transform: scale(0.97);
+    }
+    .lighting-drawer .ambient-row {
+      display: flex; gap: 8px; align-items: center;
+    }
+    .lighting-drawer .ambient-row select {
+      flex: 1; padding: 8px 10px;
+      border-radius: 8px; border: 1px solid #2a2a3a;
+      background: #14141f; color: var(--text);
+      font-size: 14px; font-weight: 500;
+      appearance: none; -webkit-appearance: none;
+      cursor: pointer;
+    }
+    .lighting-drawer .ambient-row button {
+      padding: 8px 16px; border-radius: 8px;
+      border: 2px solid #2a2a3a; background: #14141f;
+      color: var(--text-mid); font-size: 13px; font-weight: 600;
+      cursor: pointer; touch-action: manipulation;
+      transition: all 0.15s;
+    }
+    .lighting-drawer .ambient-row button:active { transform: scale(0.95); }
+    .lighting-drawer .ambient-row .go-btn {
+      border-color: #4ecca3; color: #4ecca3;
+    }
+    .lighting-drawer .ambient-row .go-btn:active {
+      background: #4ecca3; color: var(--bg);
+    }
+    .lighting-drawer .ambient-row .off-btn {
+      border-color: #e94560; color: #e94560;
+    }
+    .lighting-drawer .dim-row {
+      display: flex; gap: 6px; align-items: center;
+    }
+    .lighting-drawer .dim-row .dim-label {
+      font-size: 12px; color: var(--text-dim); font-weight: 600;
+      margin-right: 4px; text-transform: uppercase;
+    }
+    .lighting-drawer .dim-row button {
+      flex: 1; padding: 7px 0;
+      border-radius: 6px; border: 1px solid #2a2a3a;
+      background: #14141f; color: var(--text-mid);
+      font-size: 12px; font-weight: 600;
+      cursor: pointer; touch-action: manipulation;
+      transition: all 0.15s;
+    }
+    .lighting-drawer .dim-row button:active { transform: scale(0.95); }
+    .lighting-drawer .dim-row button.active {
+      border-color: #ffd93d; background: rgba(255, 217, 61, 0.15); color: #ffd93d;
+    }
     .ctrl-btn {
       touch-action: manipulation;
       width: 64px; height: 64px;
@@ -500,6 +573,39 @@
   <div class="track-toggles">
     <button class="track-btn" id="trackOriginal" data-track="Original">🎧 Original</button>
     <button class="track-btn" id="trackBT" data-track="BT">🔊 Backing</button>
+    <button class="track-btn lights" id="btnLights">💡</button>
+  </div>
+
+  <!-- Lighting drawer -->
+  <div class="lighting-drawer" id="lightingDrawer">
+    <button class="blackout-btn" id="btnBlackout">⬛ Blackout</button>
+    <div class="ambient-row">
+      <select id="ambientSelect">
+        <option value="Fire">Fire</option>
+        <option value="Ocean">Ocean</option>
+        <option value="Neon">Neon</option>
+        <option value="Jungle">Jungle</option>
+        <option value="Twilight">Twilight</option>
+        <option value="Sunset">Sunset</option>
+        <option value="Arctic">Arctic</option>
+        <option value="Toxic">Toxic</option>
+        <option value="Gold">Gold</option>
+        <option value="Smoke">Smoke</option>
+        <option value="Spring">Spring</option>
+        <option value="Blood">Blood</option>
+        <option value="Vapor">Vapor</option>
+        <option value="Storm">Storm</option>
+      </select>
+      <button class="go-btn" id="btnAmbientGo">▶ GO</button>
+      <button class="off-btn" id="btnAmbientOff">■ OFF</button>
+    </div>
+    <div class="dim-row">
+      <span class="dim-label">Dim</span>
+      <button data-dim="25">Sil</button>
+      <button data-dim="50">50</button>
+      <button data-dim="75">75</button>
+      <button data-dim="100">Full</button>
+    </div>
   </div>
 
   <!-- Set progress -->
@@ -833,6 +939,74 @@ document.getElementById('trackOriginal').addEventListener('click', function() {
 document.getElementById('trackBT').addEventListener('click', function() {
   sendCommand('toggle_track', { track: 'BT' });
 });
+
+// ---------- Lighting drawer ----------
+(function() {
+  var btnLights = document.getElementById('btnLights');
+  var drawer = document.getElementById('lightingDrawer');
+  var longPressTimer = null;
+  var longPressFired = false;
+
+  function sendLighting(action, extra) {
+    var msg = { type: 'lighting', action: action };
+    if (extra) for (var k in extra) msg[k] = extra[k];
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg));
+  }
+
+  // Long-press = blackout, short-tap = toggle drawer
+  btnLights.addEventListener('touchstart', function(e) {
+    e.preventDefault();
+    longPressFired = false;
+    longPressTimer = setTimeout(function() {
+      longPressFired = true;
+      sendLighting('blackout');
+      btnLights.style.background = 'rgba(233,69,96,0.4)';
+      setTimeout(function() { btnLights.style.background = ''; }, 300);
+    }, 500);
+  });
+  btnLights.addEventListener('touchend', function() {
+    clearTimeout(longPressTimer);
+    if (!longPressFired) {
+      drawer.classList.toggle('open');
+      btnLights.classList.toggle('open');
+    }
+  });
+  btnLights.addEventListener('touchcancel', function() { clearTimeout(longPressTimer); });
+  // Mouse fallback (desktop testing)
+  btnLights.addEventListener('click', function(e) {
+    if (e.sourceCapabilities && e.sourceCapabilities.firesTouchEvents) return;
+    drawer.classList.toggle('open');
+    btnLights.classList.toggle('open');
+  });
+
+  // Blackout button
+  document.getElementById('btnBlackout').addEventListener('click', function() {
+    sendLighting('blackout');
+  });
+
+  // Ambient GO
+  document.getElementById('btnAmbientGo').addEventListener('click', function() {
+    var palette = document.getElementById('ambientSelect').value;
+    sendLighting('ambient', { palette: palette });
+  });
+
+  // Ambient OFF
+  document.getElementById('btnAmbientOff').addEventListener('click', function() {
+    sendLighting('ambientOff');
+  });
+
+  // Dim buttons
+  var dimBtns = document.querySelectorAll('.dim-row button[data-dim]');
+  for (var i = 0; i < dimBtns.length; i++) {
+    dimBtns[i].addEventListener('click', function() {
+      var level = parseInt(this.getAttribute('data-dim'));
+      sendLighting('dim', { level: level });
+      // Highlight active
+      for (var j = 0; j < dimBtns.length; j++) dimBtns[j].classList.remove('active');
+      this.classList.add('active');
+    });
+  }
+})();
 
 // ---------- Keyboard shortcuts ----------
 document.addEventListener('keydown', function(e) {

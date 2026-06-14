@@ -557,6 +557,12 @@ wsServer.on('request', function(request) {
           return;
         }
 
+        // Lighting commands (navigator drawer → QLC+ via MIDI)
+        if (parsed.type === 'lighting') {
+          lightingBridge.handleMessage(parsed);
+          return;
+        }
+
         // Client commands (play/stop/next/prev/goto from navigator/lyrics)
         if (parsed.type === 'command') {
           additions.handleCommand(parsed, {
@@ -852,6 +858,8 @@ function noteOff(note) {
 // client commands to M4L. Ableton is the source of truth.
 
 var udpBridge = require("./udp-bridge");
+var lightingBridge = require("./lighting-bridge");
+lightingBridge.init();
 
 // Load song by scene name (slug-matched, bypasses pointer-based navigation)
 function loadSongBySceneName(sceneName, sceneIndex, sceneCount) {
