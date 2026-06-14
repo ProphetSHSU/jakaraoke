@@ -640,6 +640,21 @@ function setSelectedScene(idx) {
         // Set currentIdx FIRST so the observer callback (fires synchronously
         // from v.set) sees the new value and skips its own broadcast.
         state.currentIdx = idx;
+
+        // If transport is playing, STOP it before selecting the new scene.
+        // Ableton's global bar counter sticks at its last value until Stop is
+        // pressed — without this, plugsync emits a stale bar number for the
+        // new song, causing the lyrics scroll engine to jump to the bottom.
+        // Stopping also resets the play button to "▶" on all clients, matching
+        // the band's workflow: load next song → wait for ready → press play.
+        // When already stopped: just select (no-op stop).
+        var ls = new LiveAPI('live_set');
+        var wasPlaying = parseInt(ls.get('is_playing'), 10) === 1;
+        if (wasPlaying) {
+            ls.set('is_playing', 0);
+            post('  setSelected [' + SCRIPT_VERSION + ']: stopped transport (was playing)\n');
+        }
+
         v.set('selected_scene', 'id', sid);
         // Clear any prior tempo schedule — broadcastSceneChange will repopulate
         // from local tempoMaps (Phase 3) or server's set_tempo_schedule if no local map.
