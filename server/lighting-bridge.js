@@ -38,12 +38,8 @@ function sendNote(note) {
 
 function blackout() {
     if (!midiOut) { console.warn('[lighting-bridge] blackout: no MIDI port'); return; }
-    console.log('[lighting-bridge] BLACKOUT');
-    sendNote(79);   // amb off (SoloFrame releases active chaser)
-    setTimeout(function() { sendNote(0); }, 10);   // system blackout
-    setTimeout(function() { sendNote(1); }, 20);   // derby off
-    setTimeout(function() { sendNote(4); }, 30);   // laser off
-    setTimeout(function() { sendNote(9); }, 40);   // strobe off
+    console.log('[lighting-bridge] BLACKOUT (StopAll)');
+    sendNote(0);    // StopAll — stops all functions, resets all toggle buttons
 }
 
 function launchAmbient(paletteName) {
@@ -54,15 +50,15 @@ function launchAmbient(paletteName) {
     }
     if (!midiOut) { console.warn('[lighting-bridge] ambient: no MIDI port'); return; }
     console.log('[lighting-bridge] GO: ' + paletteName + ' (note ' + (80 + idx) + ')');
-    sendNote(79);                                       // stop any running chaser
-    setTimeout(function() { sendNote(118); }, 50);      // dim 75%
+    sendNote(0);                                        // StopAll — clean slate
+    setTimeout(function() { sendNote(118); }, 50);      // dim 75% (guaranteed ON from off state)
     setTimeout(function() { sendNote(80 + idx); }, 100); // start chaser
 }
 
 function ambientOff() {
     if (!midiOut) return;
-    console.log('[lighting-bridge] ambient OFF');
-    sendNote(79);
+    console.log('[lighting-bridge] ambient OFF (StopAll)');
+    sendNote(0);    // StopAll — stops chaser + dim + everything
 }
 
 function setDim(level) {
