@@ -6,7 +6,7 @@
 
 var jzz = require('jzz');
 
-var MIDI_PORT_NAME = 'IAC Driver QLC Effects';
+var MIDI_PORT_NAME = 'QLC Controller QLC Effects';
 var VELOCITY = 100;
 
 var PALETTES = ['Fire','Ocean','Neon','Jungle','Twilight','Sunset','Arctic',
